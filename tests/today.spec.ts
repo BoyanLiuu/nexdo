@@ -86,3 +86,69 @@ test("a page view issues no failed requests", async ({ page }) => {
 
   expect(failures).toEqual([]);
 });
+
+test("shows chips for what it parsed before anything is saved", async ({ page }) => {
+  const title = unique();
+  await page.goto("/");
+
+  const input = page.getByRole("textbox", { name: "Add a task" });
+  await input.fill(`${title} friday p1`);
+
+  // The chips are the contract: you see the guess before it is committed.
+  await expect(page.getByRole("button", { name: "Don't apply P1" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /Don't apply Fri/ })).toBeVisible();
+
+  // Nothing has been written yet — the preview is purely local.
+  await expect(taskRow(page, title)).toBeHidden();
+});
+
+test("applies a parsed priority to a task due today", async ({ page }) => {
+  const title = unique();
+  await page.goto("/");
+
+  const input = page.getByRole("textbox", { name: "Add a task" });
+  await input.fill(`${title} p1`);
+  await input.press("Enter");
+
+  // Undated capture on Today lands on Today, so the row is here with its flag.
+  await expect(taskRow(page, title)).toBeVisible();
+  await expect(page.getByTitle("Priority 1")).toBeVisible();
+});
+
+test("a task parsed onto a future date leaves the Today view", async ({ page }) => {
+  const title = unique();
+  await page.goto("/");
+
+  const input = page.getByRole("textbox", { name: "Add a task" });
+  await input.fill(`${title} friday`);
+  await input.press("Enter");
+
+  // Correct, and currently a dead end: the task exists but Upcoming does not
+  // arrive until M3, so there is nowhere to see it. Asserted so the gap is
+  // recorded rather than discovered as a bug.
+  await expect(taskRow(page, title)).toBeHidden();
+});
+
+test("does not invent a time from a sentence that merely contains a number", async ({ page }) => {
+  await page.goto("/");
+
+  const input = page.getByRole("textbox", { name: "Add a task" });
+  await input.fill("meet at 5 guys");
+
+  // Nothing is consumed, so there is nothing to dismiss — and crucially no
+  // 5pm task appears on something the user never looked at again.
+  await expect(page.getByRole("button", { name: /Don't apply/ })).toHaveCount(0);
+});
+
+test("a dismissed chip returns its token to the title", async ({ page }) => {
+  const title = unique();
+  await page.goto("/");
+
+  const input = page.getByRole("textbox", { name: "Add a task" });
+  await input.fill(`${title} p1`);
+  await page.getByRole("button", { name: "Don't apply P1" }).click();
+
+  await input.press("Enter");
+  // "p1" is part of the name now, not a priority.
+  await expect(taskRow(page, `${title} p1`)).toBeVisible();
+});

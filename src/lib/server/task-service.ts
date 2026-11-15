@@ -1,5 +1,6 @@
 import type { OwnedPrincipal } from "@/lib/server/principal";
 import { prisma } from "@/lib/server/prisma";
+import type { NewTask } from "@/lib/schemas";
 import type { Label, List, Priority, Task } from "@/lib/types";
 
 /**
@@ -10,15 +11,6 @@ import type { Label, List, Priority, Task } from "@/lib/types";
  * the authorization model: a guessed or forged id matches zero rows rather than
  * someone else's task. There is no second check to forget.
  */
-
-/**
- * Append-ordered position key. Monotonic and lexicographically sortable, which
- * is all M1 needs. M4 replaces this with fractional indexing so a drag writes
- * one row instead of reindexing.
- */
-function nextPosition(): string {
-  return Date.now().toString(36);
-}
 
 /** Prisma rows carry Date objects and relations; the view layer wants plain data. */
 const TASK_SELECT = {
@@ -108,31 +100,17 @@ export async function todayView(principal: OwnedPrincipal, today: string) {
   };
 }
 
-export async function createTask(
-  principal: OwnedPrincipal,
-  title: string,
-  dueDate: string | null = null,
-): Promise<Task> {
-  const row = await prisma.task.create({
-    data: { ownerId: principal.ownerId, title, dueDate, position: nextPosition() },
-    select: TASK_SELECT,
-  });
-  await touch(principal);
-  return toTask(row);
-}
-
-/** Several titles from one paste, in one statement. */
-export async function createTasks(
-  principal: OwnedPrincipal,
-  titles: string[],
-  dueDate: string | null = null,
-): Promise<number> {
+export async function createTasks(principal: OwnedPrincipal, inputs: NewTask[]): Promise<number> {
+  // One statement for the whole paste. `position` is derived from a single base
+  // so a pasted block keeps the order it was written in.
   const base = Date.now();
   const { count } = await prisma.task.createMany({
-    data: titles.map((title, i) => ({
+    data: inputs.map((input, i) => ({
       ownerId: principal.ownerId,
-      title,
-      dueDate,
+      title: input.title,
+      dueDate: input.dueDate ?? null,
+      dueTime: input.dueTime ?? null,
+      priority: input.priority,
       position: (base + i).toString(36),
     })),
   });

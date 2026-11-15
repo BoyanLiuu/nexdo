@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 
 import { fail, ok, type ActionResult } from "@/lib/actions/result";
-import { createTaskSchema, renameTaskSchema, taskIdSchema } from "@/lib/schemas";
+import { createTasksSchema, renameTaskSchema, taskIdSchema } from "@/lib/schemas";
 import {
   assertCan,
   ensureOwner,
@@ -50,27 +50,19 @@ async function authorize(
 }
 
 export async function createTasks(input: unknown): Promise<ActionResult> {
-  const parsed = createTaskSchema.safeParse(input);
+  const parsed = createTasksSchema.safeParse(input);
   if (!parsed.success) {
     return fail(parsed.error.issues[0]?.message ?? "That task could not be added.");
   }
 
-  const { title, timeZone, dueDate } = parsed.data;
-  const titles = title
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .slice(0, 100);
-
-  if (titles.length === 0) return fail("A task needs a title.");
+  const { tasks, timeZone } = parsed.data;
 
   // The one action that may mint an owner: a cookie can only be set from here,
   // never from a Server Component.
   const principal = await ensureOwner(timeZone);
   assertCan(principal, "task:create");
 
-  if (titles.length === 1) await taskService.createTask(principal, titles[0], dueDate ?? null);
-  else await taskService.createTasks(principal, titles, dueDate ?? null);
+  await taskService.createTasks(principal, tasks);
 
   revalidatePath("/");
   return ok();

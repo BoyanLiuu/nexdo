@@ -4,14 +4,14 @@ _Focus on what's next._
 
 Progress tracker for the build: what has actually landed, and the decisions made along the way.
 
-**Last verified:** 2026-11-15 — M0 and M1 complete, `pnpm check` (20 unit tests) and
-`pnpm test:e2e` (9 tests, Chromium + WebKit) green.
+**Last verified:** 2026-11-15 — M0, M1 and M2 complete, `pnpm check` (43 unit tests) and
+`pnpm test:e2e` (19 tests, Chromium + WebKit) green.
 
 |     | Milestone                                     | Status  |
 | --- | --------------------------------------------- | ------- |
 | M0  | Scaffold and the Today screen (fixtures)      | ✅ done |
 | M1  | Database, principal, optimistic mutation path | ✅ done |
-| M2  | Natural-language capture                      | ☐       |
+| M2  | Natural-language capture                      | ✅ done |
 | M3  | Dates and views                               | ☐       |
 | M4  | Lists, labels, detail, ordering, search       | ☐       |
 | M5  | Recurrence                                    | ☐       |
@@ -143,6 +143,69 @@ and holding `rolbypassrls` — so PostgREST reads nothing while Prisma is unaffe
   would be cleaner.
 - `DATABASE_URL` points at the session pooler (5432), not the transaction pooler (6543), because 6543
   is blocked on this network. M8 must switch it.
+
+## M2 — Natural-language capture ✅
+
+- [x] `lib/parse.ts` — `chrono-node` for dates and times, own regex for `p1`/`p2`/`p3`
+- [x] Parsing runs client-side, so chips update as you type with no round trip
+- [x] `chrono-node` imported dynamically on the first keystroke; priority parsing works without it,
+      so the first character is never dead while it loads
+- [x] Removable chips before save; the raw text stays editable and dismissing one returns its token
+      to the title
+- [x] Title has consumed tokens cut out by span, not string-replaced
+- [x] Multi-line paste parses each line independently; chips preview the first line only
+- [x] `N` focuses capture from anywhere, unless a field already has focus
+- [x] `aria-live` announcement of what will be saved, since chips are the only signal the text was
+      interpreted rather than taken literally
+- [x] 24 parser unit tests plus 5 e2e
+
+**Bundle:** first-load JS **129.4 KB** gzipped, up 0.7 KB from M1 against a 200 KB budget. `chrono`
+ships in its own chunks and is verifiably absent from the initial payload.
+
+### Decisions log
+
+- **Matches carry spans, not just values.** The title is built by cutting accepted spans out of the
+  original text, which is what lets a dismissed chip return its token — a task genuinely named
+  "P1 rollout" keeps its name. String-replacing the matched words would mangle it.
+- **Date and time are decided independently, and either can be absent.** chrono reports a full
+  timestamp for almost anything, so both go through a certainty gate:
+  - A **time** needs `meridiem` certain. chrono reports it for "5pm", "9:30am" and "17:00" but not
+    for a bare "at 5" — which is what stops "meet at 5 guys" becoming a 5 pm task.
+  - A **date** needs one of `weekday`/`day`/`month`/`year` certain. Without this, "at 5" offered a
+    "Today" chip, claiming an intent the user never had.
+  - Neither certain means the match is dropped entirely and the title is left whole.
+  - A time with no date leaves `dueDate` null, so "call mum 7pm" is today at 7 via the view's default
+    rather than a date invented in the parser.
+- **Read chrono's date _components_, never `.date()` then `toISOString()`.** That round trip shifts
+  into UTC — "tomorrow 5pm" became the following day. Components are already in the parser's local
+  zone, which client-side is the user's own. There is a regression test for exactly this.
+- **Chips sort by position in the text**, not by which scanner ran first, so they read left to right
+  as typed.
+- **Chip ids are `kind:matchedText`**, not span-based: spans shift when you edit earlier in the line,
+  which would make a dismissal jump to a different token.
+- **The create action takes an array of parsed tasks.** One line and a pasted block then follow the
+  same path, and the server validates each with the same schema.
+
+### From the review pass
+
+- **Deleted parse.ts's private date formatters** in favour of `dates.ts`. They were near-duplicates,
+  and the local copy carried a real bug: it compared a locally-constructed `Date` against
+  `new Date("YYYY-MM-DD")`, which JS parses as **UTC midnight**. At UTC+13/+14 the day difference came
+  out one short, so tomorrow's chip read "16 Nov" instead of "Tomorrow". Confirmed in
+  `Pacific/Apia` and `Pacific/Kiritimati` before fixing. One formatter now, building both sides the
+  same way.
+- **`chrono` is loaded from the change handler, not an effect.** An effect keyed on `value` re-ran on
+  every keystroke only to hit its own guard. Typing is an interaction, not derived state.
+- Removed `nextPosition()`, orphaned when the two create functions became one, and a redundant
+  `PRIORITY.lastIndex` reset (`matchAll` does not advance the source regex).
+
+### Known gap this milestone opens
+
+Parsing a future date now creates tasks that **leave the only view that exists**. Type "pay rent
+friday" on Today and the task is saved correctly and then invisible, because Upcoming arrives in M3.
+There is an e2e test asserting this so it is recorded as a known state rather than found as a bug.
+
+---
 
 ## Conventions
 

@@ -3,7 +3,9 @@ import { z } from "zod";
 /**
  * One schema per action payload, shared by the form and the server. A Server
  * Action is a public endpoint — anything arriving here is untrusted, including
- * when it came from our own form a moment ago.
+ * when it came from our own form a moment ago. The capture box parses in the
+ * browser, so these fields are *especially* untrusted: they are whatever the
+ * client decided they were.
  */
 
 /** Rejects a stray timestamp or a malformed date before it reaches the column. */
@@ -11,7 +13,7 @@ export const isoDate = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, "expected a calendar date as YYYY-MM-DD");
 
-export const isoTime = z.string().regex(/^\d{2}:\d{2}$/, "expected HH:MM");
+export const isoTime = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "expected HH:MM");
 
 /**
  * An IANA zone from the browser. Validated by asking the platform rather than
@@ -31,16 +33,22 @@ export const timeZone = z.string().refine(
 
 export const taskId = z.string().min(1).max(64);
 
-export const createTaskSchema = z.object({
+/** 1 = highest, 4 = none. */
+export const priority = z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]);
+
+/** One task as the capture box parsed it. */
+export const newTaskSchema = z.object({
   title: z.string().trim().min(1, "a task needs a title").max(500),
+  dueDate: isoDate.nullish(),
+  dueTime: isoTime.nullish(),
+  priority: priority.default(4),
+});
+
+export const createTasksSchema = z.object({
+  /** A pasted block becomes several; one line becomes one. Same path either way. */
+  tasks: z.array(newTaskSchema).min(1, "a task needs a title").max(100),
   /** Sent on every create so a brand-new guest's owner row gets the right zone. */
   timeZone: timeZone,
-  /**
-   * The view's own date. Capturing from Today dates the task today — as Todoist
-   * does — rather than dropping it into Inbox where the user isn't looking.
-   * Omitted means undated, which is what Inbox will send in M3.
-   */
-  dueDate: isoDate.nullish(),
 });
 
 export const renameTaskSchema = z.object({
@@ -50,4 +58,4 @@ export const renameTaskSchema = z.object({
 
 export const taskIdSchema = z.object({ id: taskId });
 
-export type CreateTaskInput = z.infer<typeof createTaskSchema>;
+export type NewTask = z.infer<typeof newTaskSchema>;

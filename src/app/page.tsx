@@ -86,7 +86,7 @@ export default async function TodayPage() {
 
             {/* Capturing from Today dates the task today, so it lands in the view
                 you are looking at rather than silently in Inbox. */}
-            <Capture dueDate={now} />
+            <Capture today={now} />
           </div>
 
           <TodayList
