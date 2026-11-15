@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
+import bundleAnalyzer from "@next/bundle-analyzer";
 
 const nextConfig: NextConfig = {
-  /* config options here */
   cacheComponents: true,
   partialPrefetching: true,
   turbopack: {
@@ -14,4 +14,5 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+/** `pnpm analyze` opens the treemap; the budget itself is checked in README.md. */
+export default bundleAnalyzer({ enabled: process.env.ANALYZE === "true" })(nextConfig);

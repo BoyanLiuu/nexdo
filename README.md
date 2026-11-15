@@ -1,36 +1,60 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Nexdo
 
-## Getting Started
+_Focus on what's next._
 
-First, run the development server:
+A personal todo app: type a task in plain words, see what it read before it saves, and keep the day's
+work in front of you. Project 33 of the build series.
+
+- **Plan and architecture:** `../docs/project-idea/33-todo-list/`
+- **Design source:** `../docs/project-idea/33-todo-list/impeccable/index-hallmark.html`
+- **Progress:** [MILESTONES.md](MILESTONES.md)
+
+## Stack
+
+Next.js App Router · React 19 · TypeScript strict · Tailwind v4 (CSS-first) · shadcn/ui · Lucide ·
+Figtree via `next/font` · Vitest · Playwright.
+
+Supabase Postgres via Prisma, Server Actions, Zustand, TanStack Query, React Hook Form + Zod, Motion
+and Clerk arrive in later milestones — see MILESTONES.md for which.
+
+## Running it
+
+`pnpm` is not on PATH in this environment; use `corepack pnpm`.
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+corepack pnpm install
+corepack pnpm dev          # http://127.0.0.1:3033
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+| Script                | What it does                                                                        |
+| --------------------- | ----------------------------------------------------------------------------------- |
+| `dev`                 | Dev server on `127.0.0.1:3033`                                                      |
+| `dev:utc`             | Same, with the server in UTC — reproduces the production time-zone mismatch locally |
+| `build` / `start`     | Production build and serve                                                          |
+| `check`               | typecheck + lint + format check + unit tests                                        |
+| `test` / `test:watch` | Vitest                                                                              |
+| `test:e2e`            | Playwright, Chromium and WebKit                                                     |
+| `analyze`             | Bundle treemap                                                                      |
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Bundle budget
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+**200 KB gzipped** for the main route. A todo app has no excuse for more.
 
-## Learn More
+| Measure               | Gzipped  | Measured        |
+| --------------------- | -------- | --------------- |
+| First-load JS for `/` | 128.7 KB | 2026-11-14 (M0) |
+| All client chunks     | 175.3 KB | 2026-11-14 (M0) |
 
-To learn more about Next.js, take a look at the following resources:
+M0 ships zero client components, so 128.7 KB is the React + Next runtime floor — about 70 KB of
+headroom for the app's own client code. `chrono-node` (M2) is dynamically imported on first keystroke
+rather than loaded at page load, and its absence from the initial payload is an M2 check.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Dates
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+The one thing worth reading before touching this code: a due date is a **calendar date**, stored as
+`YYYY-MM-DD` text, never a timestamp. "Due today" is computed in the _user's_ zone, not the server's —
+and because the server renders these views, that zone has to be data on the owner row rather than
+whatever `new Date()` returns in the deploy region.
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+`src/lib/dates.ts` is provisional until M3 and reads the machine's local zone. Don't rely on it being
+correct for anyone but you yet.

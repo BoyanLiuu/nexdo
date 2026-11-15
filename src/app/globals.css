@@ -1,26 +1,189 @@
 @import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@custom-variant dark (&:is(.dark *));
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --font-heading: var(--font-sans);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+/* Nexdo palette, ported from impeccable/index-hallmark.html.
+   Hex rather than oklch so values diff directly against the prototype. */
+@theme {
+  --color-ground: #fcfcfb;
+  --color-card-paper: #ffffff;
+  --color-rail: #eef0f6;
+  --color-rail-hover: #e4e7f1;
+  --color-rail-line: #dce0ec;
+  --color-ink: #1b1f33;
+  --color-ink-2: #4a5068;
+  --color-ink-3: #656b84;
+  --color-hair: #e1e4ec;
+  --color-hair-soft: #eceef3;
+  --color-hair-strong: #c3c8d6;
+  --color-hover: #f3f4f8;
+  --color-blue: #2a3db0;
+  --color-blue-hover: #2233a0;
+  --color-blue-press: #1b2a8e;
+  --color-blue-tint: #e7eaf9;
+  --color-blue-tint-2: #d3d9f4;
+  --color-marigold: #f4b400;
+  --color-marigold-ink: #4a3600;
+  --color-marigold-tint: #fff0c2;
+  --color-verm: #c1381d;
+  --color-verm-tint: #fbe8e3;
+  --color-verm-hover: #a82f17;
+  --color-verm-edge: #e7b4a8;
+  --color-ok: #2c7a4b;
+  --color-field-edge: #868ea8;
+
+  /* list accents */
+  --color-grass: #3c9a55;
+  --color-grass-tint: #ddf0e2;
+  --color-sky: #2c84c6;
+  --color-sky-tint: #dbeaf7;
+  --color-violet: #7b4db8;
+  --color-violet-tint: #ece3f7;
+  --color-orange: #d9701f;
+  --color-orange-tint: #fbe6d4;
+  --color-rose: #c9467a;
+  --color-rose-tint: #f8dfea;
+  --color-teal: #14908a;
+  --color-teal-tint: #d5efed;
+  --color-olive: #7a8721;
+  --color-olive-tint: #ecefd4;
+  --color-brown: #8a5a3a;
+  --color-brown-tint: #f0e5dc;
+  --color-slate: #66718c;
+  --color-slate-tint: #e5e8ef;
+
+  --radius-cell: 6px;
+  --radius-panel: 10px;
+
+  --spacing-rail: 252px;
+  --spacing-panel: 420px;
+
+  --ease-out-quint: cubic-bezier(0.2, 0.7, 0.2, 1);
+
+  --shadow-pop: 0 10px 22px -8px rgb(27 31 51 / 0.22), 0 2px 6px rgb(27 31 51 / 0.08);
+  --shadow-item: 0 1px 2px rgb(27 31 51 / 0.06);
+  --shadow-toast: 0 10px 28px -10px rgb(27 31 51 / 0.5);
+  --shadow-drawer-left: 18px 0 40px -18px rgb(27 31 51 / 0.35);
+}
+
+/* shadcn's semantic slots, mapped onto the Nexdo palette so its primitives
+   inherit the design instead of the default neutral theme. */
+:root {
+  --radius: 0.625rem;
+  --background: #fcfcfb;
+  --foreground: #1b1f33;
+  --card: #ffffff;
+  --card-foreground: #1b1f33;
+  --popover: #ffffff;
+  --popover-foreground: #1b1f33;
+  --primary: #2a3db0;
+  --primary-foreground: #ffffff;
+  --secondary: #eef0f6;
+  --secondary-foreground: #1b1f33;
+  --muted: #f3f4f8;
+  --muted-foreground: #656b84;
+  --accent: #e4e7f1;
+  --accent-foreground: #1b1f33;
+  --destructive: #c1381d;
+  --border: #e1e4ec;
+  --input: #868ea8;
+  --ring: #2a3db0;
+  --sidebar: #eef0f6;
+  --sidebar-foreground: #1b1f33;
+  --sidebar-primary: #2a3db0;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #e4e7f1;
+  --sidebar-accent-foreground: #1b1f33;
+  --sidebar-border: #dce0ec;
+  --sidebar-ring: #2a3db0;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* No .dark block: the design is a light-only system. The command palette's
+   theme toggle (M6) needs a dark palette designed first — none exists yet. */
+
+/* The checkbox tick: a masked SVG, which has no Tailwind utility equivalent.
+   Ported from `.tick::after` in the prototype. */
+@layer components {
+  .tick {
+    display: grid;
+    place-items: center;
+    cursor: pointer;
+  }
+  .tick::after {
+    content: "";
+    width: 12px;
+    height: 12px;
+    background: currentColor;
+    color: transparent;
+    transform: scale(0.6);
+    transition:
+      transform 0.18s var(--ease-out-quint),
+      color 0.12s;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5'/%3E%3C/svg%3E")
+      center / contain no-repeat;
+  }
+  .tick:hover::after {
+    color: var(--color-blue-tint-2);
+    transform: scale(0.85);
+  }
+  .tick:checked::after {
+    color: var(--color-card-paper);
+    transform: scale(1);
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-variant-numeric: tabular-nums;
+  }
+  html {
+    @apply font-sans;
+    -webkit-tap-highlight-color: transparent;
+  }
 }
