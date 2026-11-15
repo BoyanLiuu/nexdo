@@ -59,16 +59,3 @@ corepack pnpm dev          # http://127.0.0.1:3033
 `dev:utc` is worth knowing about. Normally your dev server and browser share a time zone, which is
 exactly the condition that hides the date bugs above. Running the server in UTC while the browser
 reports your real zone reproduces what production looks like.
-
-## Bundle budget
-
-**200 KB gzipped** for the main route. A todo app has no excuse for more.
-
-| Measure               | Gzipped  | Measured   |
-| --------------------- | -------- | ---------- |
-| First-load JS for `/` | 128.7 KB | 2026-11-14 |
-| All client chunks     | 175.3 KB | 2026-11-14 |
-
-There are currently no client components, so 128.7 KB is the React + Next runtime floor — about 70 KB
-of headroom for the app's own client code. The natural-language date parser is the heaviest planned
-dependency and loads on first keystroke rather than at page load.
