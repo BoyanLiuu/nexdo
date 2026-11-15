@@ -11,7 +11,7 @@ import type { Priority } from "@/lib/types";
  * pushing onto `matches` — tokenisation does not need reworking.
  */
 
-export type ChipKind = "date" | "time" | "priority";
+export type ChipKind = "date" | "time" | "priority" | "list" | "label";
 
 export type Chip = {
   /**
@@ -37,6 +37,8 @@ type Fields = {
   dueDate: string | null;
   dueTime: string | null;
   priority: Priority;
+  listId: string | null;
+  labelIds: string[];
 };
 
 export type ParsedCapture = Fields & {
@@ -46,6 +48,16 @@ export type ParsedCapture = Fields & {
 };
 
 const PRIORITY = /\bp([1-3])\b/gi;
+/** `#home`, `#deep-work`. Unquoted and single-word, so a name with a space is
+ *  matched on its first word and the rest stays in the title. */
+const LIST_TOKEN = /#([\w-]+)/g;
+const LABEL_TOKEN = /@([\w-]+)/g;
+
+/** Names are matched case- and separator-insensitively, so `#deepwork`
+ *  finds "Deep work". */
+function slug(value: string): string {
+  return value.toLowerCase().replace(/[\s_-]+/g, "");
+}
 
 /** Writing any one of these means the date was intended, not inferred. */
 const CERTAIN_DATE_PARTS = ["weekday", "day", "month", "year"] as const;
@@ -102,13 +114,16 @@ export function parseCapture(
     /** Today in the owner's zone, for rendering "Today"/"Tomorrow" chips. */
     today: string;
     chrono?: Chrono;
+    /** Known lists and labels, so `#home` can resolve to an id. */
+    lists?: readonly { id: string; name: string }[];
+    labels?: readonly { id: string; name: string }[];
     /** Chip ids the user has dismissed. Their matches stay in the title. */
     dismissed?: ReadonlySet<string>;
     /** Reference instant for relative dates. The browser's clock, client-side. */
     now?: Date;
   },
 ): ParsedCapture {
-  const { today, chrono, dismissed, now } = options;
+  const { today, chrono, dismissed, now, lists, labels } = options;
   const matches: Match[] = [];
 
   for (const m of text.matchAll(PRIORITY)) {
@@ -121,6 +136,34 @@ export function parseCapture(
         f.priority = value;
       },
     });
+  }
+
+  // `#list` and `@label` only consume text when they match something real. An
+  // unresolved token stays in the title rather than silently disappearing — the
+  // user may simply have typed a "#" in a sentence.
+  for (const [pattern, kind, source] of [
+    [LIST_TOKEN, "list" as const, lists],
+    [LABEL_TOKEN, "label" as const, labels],
+  ] as const) {
+    if (!source?.length) continue;
+    pattern.lastIndex = 0;
+    for (const m of text.matchAll(pattern)) {
+      const found = source.find((entry) => slug(entry.name) === slug(m[1]));
+      if (!found) continue;
+      matches.push({
+        chip: {
+          id: `${kind}:${found.id}`,
+          kind,
+          label: kind === "list" ? found.name : `@${found.name}`,
+        },
+        from: m.index,
+        to: m.index + m[0].length,
+        apply: (f) => {
+          if (kind === "list") f.listId = found.id;
+          else if (!f.labelIds.includes(found.id)) f.labelIds.push(found.id);
+        },
+      });
+    }
   }
 
   if (chrono) {
@@ -161,7 +204,7 @@ export function parseCapture(
     .filter((m) => !dismissed?.has(m.chip.id))
     .sort((a, b) => a.from - b.from);
 
-  const fields: Fields = { dueDate: null, dueTime: null, priority: 4 };
+  const fields: Fields = { dueDate: null, dueTime: null, priority: 4, listId: null, labelIds: [] };
   for (const match of accepted) match.apply(fields);
 
   // Cut the accepted spans out of the original text rather than string-replacing

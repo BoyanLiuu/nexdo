@@ -23,6 +23,8 @@ const CHIP_TONE: Record<Chip["kind"], string> = {
   date: "bg-blue-tint text-ink",
   time: "bg-blue-tint text-ink",
   priority: "bg-marigold-tint text-marigold-ink",
+  list: "bg-hover text-ink",
+  label: "bg-hover text-ink-2",
 };
 
 /** How long a submit will wait for the parser before saving without it. */
@@ -42,6 +44,9 @@ async function raceParser(load: Promise<Chrono>): Promise<Chrono | undefined> {
 export function Capture({
   today,
   defaultDueDate,
+  lists = [],
+  labels = [],
+  defaultListId = null,
 }: {
   /** The user's calendar date. Only a reference for chip labels. */
   today: string;
@@ -50,6 +55,11 @@ export function Capture({
    * where you are looking — or null in Inbox, which is for undated work.
    */
   defaultDueDate: string | null;
+  /** Passed in so `#home` can resolve to an id without a round trip. */
+  lists?: readonly { id: string; name: string }[];
+  labels?: readonly { id: string; name: string }[];
+  /** A list view files new tasks into itself unless the text says otherwise. */
+  defaultListId?: string | null;
 }) {
   const [value, setValue] = useState("");
   const [dismissed, setDismissed] = useState<ReadonlySet<string>>(new Set());
@@ -103,8 +113,8 @@ export function Capture({
    * of chips at once would be noise rather than reassurance.
    */
   const preview = useMemo(
-    () => parseCapture(lines[0] ?? "", { today, chrono, dismissed }),
-    [lines, today, chrono, dismissed],
+    () => parseCapture(lines[0] ?? "", { today, chrono, dismissed, lists, labels }),
+    [lines, today, chrono, dismissed, lists, labels],
   );
 
   function reset() {
@@ -130,7 +140,7 @@ export function Capture({
     const parser = chrono ?? (await raceParser(loadChrono()));
 
     const tasks: NewTask[] = lines.map((line) => {
-      const parsed = parseCapture(line, { today, chrono: parser, dismissed });
+      const parsed = parseCapture(line, { today, chrono: parser, dismissed, lists, labels });
       return {
         // A line that was *entirely* tokens still needs a title; fall back to
         // the raw line rather than saving an empty task.
@@ -140,6 +150,8 @@ export function Capture({
         dueDate: parsed.dueDate ?? defaultDueDate,
         dueTime: parsed.dueTime,
         priority: parsed.priority,
+        listId: parsed.listId ?? defaultListId ?? null,
+        labelIds: parsed.labelIds,
       };
     });
 

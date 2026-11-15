@@ -1,4 +1,7 @@
+import { connection } from "next/server";
+
 import { Rail, type ViewKey } from "@/components/rail";
+import { SearchDialog } from "@/components/search-dialog";
 import { getPrincipal } from "@/lib/server/principal";
 import { todayIn } from "@/lib/dates";
 import { viewChrome } from "@/lib/server/task-service";
@@ -18,13 +21,20 @@ const EMPTY: Awaited<ReturnType<typeof viewChrome>> = {
   counts: { due: 0, inbox: 0, upcoming: 0, completed: 0 },
 };
 
-export async function RailData({ current }: { current: ViewKey }) {
+export async function RailData({ current, currentId }: { current: ViewKey; currentId?: string }) {
   const principal = await getPrincipal();
-  const chrome =
-    principal.kind === "none" ? EMPTY : await viewChrome(principal, todayIn(principal.timeZone));
+  const today = await userToday();
+  const chrome = principal.kind === "none" ? EMPTY : await viewChrome(principal, today);
 
   return (
-    <Rail current={current} lists={chrome.lists} labels={chrome.labels} counts={chrome.counts} />
+    <Rail
+      current={current}
+      currentId={currentId}
+      lists={chrome.lists}
+      labels={chrome.labels}
+      counts={chrome.counts}
+      search={<SearchDialog now={today} />}
+    />
   );
 }
 
@@ -33,6 +43,13 @@ export async function RailData({ current }: { current: ViewKey }) {
  * the server's clock — a Vercel region's date is wrong for most of the world.
  */
 export async function userToday(): Promise<string> {
+  // Next flags `new Date()` as an unstable value during the prerender pass, and
+  // being inside a Suspense boundary does not exempt it — only an explicit
+  // dynamic access does. Declaring it here means the one function that reads a
+  // clock is also the one that opts its route out of prerendering, rather than
+  // every caller having to remember.
+  await connection();
+
   const principal = await getPrincipal();
   // A first-time visitor has no stored zone yet. UTC is the honest default: it
   // is wrong for almost everyone, but there is nothing to be right about until

@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Figtree } from "next/font/google";
 
+import { QueryProvider } from "@/components/query-provider";
 import { Toaster } from "@/components/ui/sonner";
 
 import "./globals.css";
@@ -38,7 +39,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={figtree.variable}>
       <body className="antialiased">
-        {children}
+        <QueryProvider>{children}</QueryProvider>
         {/* Undo lives in a toast, so this is load-bearing, not decoration. */}
         <Toaster position="bottom-center" closeButton />
       </body>

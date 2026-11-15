@@ -8,7 +8,14 @@ import { ViewSubtitle } from "@/components/view-shell";
 import type { ViewKey } from "@/components/rail";
 import { addDays, formatDayRange, formatLongDate } from "@/lib/dates";
 import { getPrincipal } from "@/lib/server/principal";
-import { UPCOMING_DAYS, tasksForView, viewChrome, type SortKey } from "@/lib/server/task-service";
+import {
+  UPCOMING_DAYS,
+  tasksForView,
+  tasksInList,
+  tasksWithLabel,
+  viewChrome,
+  type SortKey,
+} from "@/lib/server/task-service";
 
 /**
  * Everything in a view that needs the database: the subtitle, the capture box
@@ -37,15 +44,23 @@ function subtitleFor(view: ViewKey, now: string): ReactNode {
       return "Everything captured without a list.";
     case "completed":
       return "The last hundred, newest first.";
+    default:
+      return null;
   }
 }
 
 export async function ViewBody({
   view,
+  targetId,
+  title,
   searchParams,
   empty,
 }: {
   view: ViewKey;
+  /** The list or label id, when `view` is "list" or "label". */
+  targetId?: string;
+  /** Overrides the subtitle for a list or label view. */
+  title?: string;
   /**
    * Passed as a promise and awaited here, not in the route. Reading
    * `searchParams` outside a Suspense boundary makes Next give up on
@@ -67,12 +82,24 @@ export async function ViewBody({
           { tasks: [], subtasks: [] },
           { lists: [], labels: [] },
         ]
-      : await Promise.all([tasksForView(principal, view, now, sort), viewChrome(principal, now)]);
+      : await Promise.all([
+          view === "list" && targetId
+            ? tasksInList(principal, targetId, sort)
+            : view === "label" && targetId
+              ? tasksWithLabel(principal, targetId, sort)
+              : tasksForView(
+                  principal,
+                  view as "today" | "upcoming" | "inbox" | "completed",
+                  now,
+                  sort,
+                ),
+          viewChrome(principal, now),
+        ]);
 
   return (
     <>
       <ViewSubtitle>
-        <span>{subtitleFor(view, now)}</span>
+        <span>{title ?? subtitleFor(view, now)}</span>
         {/* Completed is always newest-first, so a sort control there would lie. */}
         {view !== "completed" && <SortControl value={sort} />}
       </ViewSubtitle>
@@ -82,7 +109,12 @@ export async function ViewBody({
       {view !== "completed" && (
         <Capture
           today={now}
-          defaultDueDate={view === "upcoming" ? addDays(now, 1) : view === "inbox" ? null : now}
+          defaultDueDate={view === "upcoming" ? addDays(now, 1) : view === "today" ? now : null}
+          lists={chrome.lists}
+          labels={chrome.labels}
+          // A list view files new tasks into itself, so capture there behaves
+          // like the view you are looking at.
+          defaultListId={view === "list" ? (targetId ?? null) : null}
         />
       )}
 
@@ -94,6 +126,10 @@ export async function ViewBody({
         labels={chrome.labels}
         now={now}
         upcomingDays={UPCOMING_DAYS}
+        sort={sort}
+        // Upcoming spans seven day-groups, so one `position` cannot express an
+        // order across them; Completed is a record. Both stay undraggable.
+        sortable={view === "today" || view === "inbox" || view === "list" || view === "label"}
         empty={empty}
       />
     </>

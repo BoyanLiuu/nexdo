@@ -16,7 +16,12 @@ export function ViewShell({
   rail,
   children,
 }: {
-  title: string;
+  /**
+   * A node, not a string, so a list or label name can stream inside its own
+   * Suspense boundary. Resolving it in the route body would read cookies there
+   * and cost the whole route its prerender.
+   */
+  title: ReactNode;
   rail: ReactNode;
   children: ReactNode;
 }) {

@@ -200,3 +200,56 @@ describe("before chrono has loaded", () => {
     expect(r.title).toBe("pay rent friday");
   });
 });
+
+describe("list and label tokens", () => {
+  const lists = [
+    { id: "l-home", name: "Home" },
+    { id: "l-deep", name: "Deep work" },
+  ];
+  const labels = [{ id: "b-quick", name: "quick" }];
+  const parseWith = (text: string) =>
+    parseCapture(text, { today: TODAY, chrono, now: NOW, lists, labels });
+
+  it("resolves a list token to its id and strips it", () => {
+    const r = parseWith("pay rent #home");
+    expect(r.listId).toBe("l-home");
+    expect(r.title).toBe("pay rent");
+  });
+
+  it("matches names case- and separator-insensitively", () => {
+    // "Deep work" has a space; "#deepwork" should still find it.
+    expect(parseWith("ship it #deepwork").listId).toBe("l-deep");
+    expect(parseWith("ship it #DEEPWORK").listId).toBe("l-deep");
+  });
+
+  it("collects labels and strips them", () => {
+    const r = parseWith("tidy up @quick");
+    expect(r.labelIds).toEqual(["b-quick"]);
+    expect(r.title).toBe("tidy up");
+  });
+
+  /**
+   * The important one. An unresolved token must stay in the title: a "#" in a
+   * sentence is far more common than a typo'd list name, and silently deleting
+   * the word would be worse than ignoring the token.
+   */
+  it("leaves an unknown token in the title", () => {
+    const r = parseWith("read #42 of the spec");
+    expect(r.listId).toBeNull();
+    expect(r.title).toBe("read #42 of the spec");
+    expect(r.chips).toHaveLength(0);
+  });
+
+  it("ignores tokens entirely when no lists or labels exist yet", () => {
+    const r = parseCapture("pay rent #home", { today: TODAY, chrono, now: NOW });
+    expect(r.listId).toBeNull();
+    expect(r.title).toBe("pay rent #home");
+  });
+
+  it("combines with a date and a priority", () => {
+    const r = parseWith("pay rent friday p1 #home");
+    expect(r).toMatchObject({ title: "pay rent", listId: "l-home", priority: 1 });
+    expect(r.dueDate).toBe("2026-11-20");
+    expect(r.chips.map((c) => c.kind)).toEqual(["date", "priority", "list"]);
+  });
+});

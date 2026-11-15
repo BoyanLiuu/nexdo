@@ -335,3 +335,77 @@ test("Upcoming keeps empty days so the week has shape", async ({ page, isMobile 
   // main region: the rail has its own "Lists" and "Labels" headings.
   await expect(page.getByRole("main").getByRole("heading", { level: 2 })).toHaveCount(7);
 });
+
+test("creates a list from the rail and files a task into it with #token", async ({
+  page,
+  isMobile,
+}) => {
+  // Desktop only: the rail is a drawer on mobile, and M6 owns opening it.
+  test.skip(!!isMobile, "the rail is hidden on mobile until M6");
+
+  const listName = `L${Date.now().toString(36)}`;
+  const title = unique();
+  await page.goto("/");
+
+  await page.getByRole("button", { name: "New list" }).click();
+  const nameInput = page.getByRole("textbox", { name: "New list name" });
+  await type(nameInput, listName);
+  await mutate(page, () => nameInput.press("Enter"));
+
+  const listLink = page.getByRole("link", { name: new RegExp(listName) });
+  await expect(listLink).toBeVisible();
+
+  // The token has to resolve against a list that now exists.
+  const capture = page.getByRole("textbox", { name: "Add a task" });
+  await type(capture, `${title} #${listName}`);
+  await expect(page.getByRole("button", { name: `Don't apply ${listName}` })).toBeVisible();
+  await mutate(page, () => capture.press("Enter"));
+
+  await listLink.click();
+  await expect(page.getByRole("heading", { level: 1, name: listName })).toBeVisible();
+  await expect(taskRow(page, title)).toBeVisible();
+});
+
+test("an unknown #token stays in the title", async ({ page }) => {
+  const title = unique();
+  await page.goto("/");
+
+  const capture = page.getByRole("textbox", { name: "Add a task" });
+  await type(capture, `${title} #nosuchlist`);
+  // Nothing to dismiss, because nothing was consumed — a "#" in a sentence is
+  // commoner than a typo'd list name.
+  await expect(page.getByRole("button", { name: /Don't apply/ })).toHaveCount(0);
+});
+
+test("the detail panel saves a priority change", async ({ page }) => {
+  const title = unique();
+  await page.goto("/");
+  await capture(page, title);
+
+  await page.getByRole("button", { name: `Open details for ${title}` }).click();
+  const panel = page.getByRole("dialog");
+  await expect(panel.getByRole("textbox", { name: "Title" })).toHaveValue(title);
+
+  await panel.getByLabel("Priority").selectOption("1");
+  await mutate(page, () => panel.getByRole("button", { name: "Save" }).click());
+
+  // The panel closes on success, and the row carries the flag.
+  await expect(panel).toBeHidden();
+  await expect(page.getByTitle("Priority 1")).toBeVisible();
+});
+
+test("a subtask shows as progress on its parent", async ({ page }) => {
+  const title = unique();
+  await page.goto("/");
+  await capture(page, title);
+
+  await page.getByRole("button", { name: `Open details for ${title}` }).click();
+  const panel = page.getByRole("dialog");
+
+  const sub = panel.getByRole("textbox", { name: "Add a subtask" });
+  await type(sub, "first step");
+  await mutate(page, () => sub.press("Enter"));
+
+  await expect(panel.getByText("first step")).toBeVisible();
+  await expect(panel.getByText(/Subtasks · 0\/1/)).toBeVisible();
+});

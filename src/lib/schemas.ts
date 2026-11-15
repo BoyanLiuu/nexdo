@@ -42,6 +42,10 @@ export const newTaskSchema = z.object({
   dueDate: isoDate.nullish(),
   dueTime: isoTime.nullish(),
   priority: priority.default(4),
+  /** From a `#list` token, or the current list view. Validated for ownership
+   *  by the service — a parsed id is still client input. */
+  listId: z.string().min(1).max(64).nullish(),
+  labelIds: z.array(z.string().min(1).max(64)).max(20).default([]),
 });
 
 export const createTasksSchema = z.object({
@@ -59,3 +63,60 @@ export const renameTaskSchema = z.object({
 export const taskIdSchema = z.object({ id: taskId });
 
 export type NewTask = z.infer<typeof newTaskSchema>;
+
+// ── M4 ──────────────────────────────────────────────────────────────────────
+
+export const listColour = z.enum([
+  "grass",
+  "sky",
+  "violet",
+  "orange",
+  "rose",
+  "teal",
+  "olive",
+  "brown",
+  "slate",
+]);
+
+const name = z.string().trim().min(1, "a name is needed").max(60);
+
+export const createListSchema = z.object({
+  name,
+  colour: listColour,
+  /** Needed because creating a list may be a visitor's very first write, which
+   *  is what mints their owner row — same as creating a task. */
+  timeZone,
+  /** A single emoji, or nothing. Length-capped rather than pattern-matched. */
+  emoji: z.string().trim().max(8).nullish(),
+});
+
+export const renameSchema = z.object({ id: taskId, name });
+export const archiveListSchema = z.object({ id: taskId, isArchived: z.boolean() });
+export const deleteListSchema = z.object({ id: taskId, keepTasks: z.boolean() });
+export const createLabelSchema = z.object({ name, colour: listColour, timeZone });
+
+/** Every field optional: the detail panel submits only what changed. */
+export const updateTaskSchema = z.object({
+  id: taskId,
+  title: z.string().trim().min(1, "a task needs a title").max(500).optional(),
+  notes: z.string().max(10_000).optional(),
+  dueDate: isoDate.nullish(),
+  dueTime: isoTime.nullish(),
+  priority: priority.optional(),
+  listId: taskId.nullish(),
+});
+
+export const setLabelsSchema = z.object({
+  id: taskId,
+  labelIds: z.array(taskId).max(20),
+});
+
+export const createSubtaskSchema = z.object({
+  parentId: taskId,
+  title: z.string().trim().min(1, "a subtask needs a title").max(500),
+});
+
+/** A reorder sends the new key, computed on the client from its neighbours. */
+export const moveSchema = z.object({ id: taskId, position: z.string().min(1).max(200) });
+
+export const searchSchema = z.object({ q: z.string().trim().min(2).max(100) });

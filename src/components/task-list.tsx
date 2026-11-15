@@ -1,15 +1,19 @@
 "use client";
 
-import { useOptimistic, useTransition } from "react";
+import { useOptimistic, useState, useTransition } from "react";
 import { toast } from "sonner";
 
+import { SortableRows } from "@/components/sortable-rows";
+import { TaskDetail } from "@/components/task-detail";
 import { TaskGroup } from "@/components/task-group";
 import { TaskRow } from "@/components/task-row";
 import { attempt } from "@/lib/actions/attempt";
 import { usePendingWriteGuard } from "@/lib/use-pending-write";
-import { completeTask, deleteTask, renameTask, uncompleteTask } from "@/lib/actions/task";
+import { completeTask, deleteTask, moveTask, renameTask, uncompleteTask } from "@/lib/actions/task";
+import { positionForMove } from "@/lib/ordering";
 import { addDays, formatDayHeading, groupByDay, isOverdue, isToday } from "@/lib/dates";
 import type { ViewKey } from "@/components/rail";
+import type { SortKey } from "@/lib/server/task-service";
 import type { Label, List, Task } from "@/lib/types";
 
 /**
@@ -30,7 +34,8 @@ type Action =
    *  Completed shows done ones, so either transition leaves the current view. */
   | { type: "remove"; id: string }
   | { type: "restore"; task: Task }
-  | { type: "rename"; id: string; title: string };
+  | { type: "rename"; id: string; title: string }
+  | { type: "move"; id: string; position: string };
 
 function reduce(tasks: Task[], action: Action): Task[] {
   switch (action.type) {
@@ -40,6 +45,12 @@ function reduce(tasks: Task[], action: Action): Task[] {
       return tasks.some((t) => t.id === action.task.id) ? tasks : [...tasks, action.task];
     case "rename":
       return tasks.map((t) => (t.id === action.id ? { ...t, title: action.title } : t));
+    case "move":
+      // Re-sorted by the new key, so the row lands where it was dropped before
+      // the server has heard about it.
+      return tasks
+        .map((t) => (t.id === action.id ? { ...t, position: action.position } : t))
+        .sort((a, b) => (a.position < b.position ? -1 : 1));
     default:
       return tasks;
   }
@@ -68,6 +79,9 @@ function groupsFor(view: ViewKey, tasks: Task[], now: string, upcomingDays: numb
       return [{ key: "inbox", title: "No list", tasks }];
     case "completed":
       return [{ key: "completed", title: "Recently completed", tasks }];
+    // A list or label view is one flat group; its name is already the page title.
+    default:
+      return [{ key: "all", title: "Tasks", tasks }];
   }
 }
 
@@ -79,6 +93,8 @@ export function TaskList({
   labels,
   now,
   upcomingDays,
+  sort,
+  sortable = false,
   empty,
 }: {
   view: ViewKey;
@@ -88,6 +104,10 @@ export function TaskList({
   labels: Label[];
   now: string;
   upcomingDays: number;
+  /** Which ordering the server applied; dragging only makes sense under "manual". */
+  sort: SortKey;
+  /** Views with a stable single list can reorder. Upcoming spans days, so it cannot. */
+  sortable?: boolean;
   /** Shown when the view has nothing in it at all. Written per view. */
   empty: React.ReactNode;
 }) {
@@ -97,6 +117,8 @@ export function TaskList({
   // A tick or a delete is optimistic, so the row is already gone from the screen
   // while the write is still travelling. Leaving now loses it silently.
   usePendingWriteGuard(pending);
+
+  const [detailId, setDetailId] = useState<string | null>(null);
 
   const listById = new Map(lists.map((l) => [l.id, l]));
   const labelById = new Map(labels.map((l) => [l.id, l]));
@@ -159,17 +181,89 @@ export function TaskList({
 
   const groups = groupsFor(view, optimistic, now, upcomingDays);
 
+  /**
+   * Manual order only. Under a date or priority sort the visual order comes
+   * from the data, so dragging would be a lie — the row would snap back on the
+   * next render.
+   */
+  const reorderable = sortable && sort === "manual";
+
+  function onMove(group: Task[], id: string, from: number, to: number) {
+    const position = positionForMove(
+      group.map((t) => t.position),
+      from,
+      to,
+    );
+    run(
+      { type: "move", id, position },
+      () => moveTask({ id, position }),
+      "Could not move that task.",
+    );
+  }
+
+  const detailTask = detailId ? optimistic.find((t) => t.id === detailId) : undefined;
+
   return (
     <>
+      {detailTask && (
+        <TaskDetail
+          key={detailTask.id}
+          task={detailTask}
+          subtasks={subtasksByParent.get(detailTask.id) ?? []}
+          lists={lists}
+          labels={labels}
+          now={now}
+          open
+          onOpenChange={(next) => !next && setDetailId(null)}
+        />
+      )}
+
       {groups.map((group) => (
         <TaskGroup key={group.key} title={group.title} count={group.tasks.length} tone={group.tone}>
           {group.tasks.length === 0 ? (
             <li className="text-ink-3 px-2 py-3 text-[13.5px]">Nothing due</li>
+          ) : reorderable ? (
+            <SortableRows
+              tasks={group.tasks}
+              onMove={(id, from, to) => onMove(group.tasks, id, from, to)}
+            >
+              {({ task, dragHandle, style }) => (
+                <div style={style}>
+                  <TaskRow
+                    task={task}
+                    now={now}
+                    list={task.listId ? listById.get(task.listId) : undefined}
+                    labels={task.labelIds
+                      .map((id) => labelById.get(id))
+                      .filter((l) => l !== undefined)}
+                    subtasks={subtasksByParent.get(task.id)}
+                    dragHandle={dragHandle}
+                    onOpenDetail={() => setDetailId(task.id)}
+                    onComplete={() => onToggle(task)}
+                    onRename={(title) =>
+                      run(
+                        { type: "rename", id: task.id, title },
+                        () => renameTask({ id: task.id, title }),
+                        "Could not rename that task.",
+                      )
+                    }
+                    onDelete={() =>
+                      run(
+                        { type: "remove", id: task.id },
+                        () => deleteTask({ id: task.id }),
+                        "Could not delete that task.",
+                      )
+                    }
+                  />
+                </div>
+              )}
+            </SortableRows>
           ) : (
             group.tasks.map((task) => (
               <TaskRow
                 key={task.id}
                 task={task}
+                onOpenDetail={() => setDetailId(task.id)}
                 now={now}
                 list={task.listId ? listById.get(task.listId) : undefined}
                 labels={task.labelIds.map((id) => labelById.get(id)).filter((l) => l !== undefined)}

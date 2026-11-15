@@ -4,8 +4,8 @@ _Focus on what's next._
 
 Progress tracker for the build: what has actually landed, and the decisions made along the way.
 
-**Last verified:** 2026-11-15 — M0–M3 complete. `pnpm check` runs 52 unit tests under four time
-zones; `pnpm test:e2e` runs 26 across Chromium and WebKit (7 desktop-only).
+**Last verified:** 2026-11-15 — M0–M4 complete. `pnpm check` runs 65 unit tests under four time
+zones; `pnpm test:e2e` runs 32 across Chromium and WebKit (8 desktop-only).
 
 |     | Milestone                                     | Status  |
 | --- | --------------------------------------------- | ------- |
@@ -13,7 +13,7 @@ zones; `pnpm test:e2e` runs 26 across Chromium and WebKit (7 desktop-only).
 | M1  | Database, principal, optimistic mutation path | ✅ done |
 | M2  | Natural-language capture                      | ✅ done |
 | M3  | Dates and views                               | ✅ done |
-| M4  | Lists, labels, detail, ordering, search       | ☐       |
+| M4  | Lists, labels, detail, ordering, search       | ✅ done |
 | M5  | Recurrence                                    | ☐       |
 | M6  | Keyboard, a11y, motion, polish                | ☐       |
 | M7  | Clerk, claim, capability gating               | ☐       |
@@ -288,6 +288,82 @@ renamed two tests whose names claimed "everywhere" after the loop was gone.
   by hand. M8's prune cron is the real answer; a separate test database would be cleaner.
 - The Today subtitle still shows only the long date. The design also shows local time, the zone name
   and a note when UTC has rolled over — all of which need a live clock, so they are client-side work.
+
+---
+
+## M4 — Lists, labels, detail, ordering, search ✅
+
+- [x] `lib/server/list-service.ts`: create / rename / archive / move / delete for lists, create /
+      rename / delete for labels, all filtered on `ownerId` like the task service
+- [x] `lib/actions/list.ts`: the matching Server Actions, each parsing its input with a Zod schema
+      before it touches the service
+- [x] Rail `+` buttons for Lists and Labels (`rail-actions.tsx`) — one component for both, because the
+      interaction is identical and two near-copies would drift
+- [x] `/list/[id]` and `/label/[id]` routes, sharing the view shell, counts and sort controls
+- [x] Detail side panel (`task-detail.tsx`) on React Hook Form + Zod: title, notes, due date, priority,
+      list, labels, subtasks
+- [x] `ui/side-panel.tsx` built on Radix Dialog primitives
+- [x] Manual ordering: `lib/ordering.ts` over `fractional-indexing`, dragged via `@dnd-kit` with a
+      `KeyboardSensor` (`sortable-rows.tsx`)
+- [x] Search: `GET /api/search` behind TanStack Query, in a `⌘K` dialog (`search-dialog.tsx`)
+- [x] Capture learned `#list` and `@label`, with the same chip-and-span treatment as dates
+- [x] 65 unit tests under four zones; e2e 31 passed / 1 flaky / 8 skipped; first-load JS unchanged at
+      129.4 KB
+
+### Decisions log
+
+- **Fractional indexing rather than an integer `position` column.** Dropping a row between two others
+  generates a string key that sorts between their keys, so a move is a **one-row write**. Renumbering
+  integers rewrites every row below the drop, which is a transaction whose size depends on list length
+  and which fights optimistic UI. The cost is unreadable keys (`a0`, `a0V`) and keys that lengthen
+  under repeated insertion at the same point — neither of which the user ever sees.
+- **`@dnd-kit` for the `KeyboardSensor`, not for the dragging.** HTML5 drag events would have covered
+  the mouse. Manual ordering reachable only by mouse is a feature half the keyboard-only audience
+  cannot use, and dnd-kit announces each step to assistive tech for free.
+- **Search is the one place TanStack Query earns its keep.** Every other read is a Server Component.
+  Search is keystroke-driven, needs debounce, caching per term and cancellation of superseded requests
+  — a Route Handler plus a query client, rather than a Server Action per keystroke.
+- **Radix Dialog directly instead of `shadcn add sheet`.** The CLI insisted on overwriting `button.tsx`
+  to install it, and a sheet _is_ a dialog positioned to one side. Focus trap, escape, scroll lock and
+  `aria-modal` come from the primitive; the file adds only position, width and motion.
+- **Mutations use `updateMany`, never `update`.** Prisma's `update` takes a unique `where`, so
+  `ownerId` cannot go in it — the ownership check would have to be a separate read first. `updateMany`
+  accepts a compound filter, making "this row **and** it is mine" a single statement. `setTaskLabels`
+  is the one exception, because delete-then-insert on a join table has no single `WHERE` to carry the
+  filter; it checks ownership explicitly and narrows the incoming ids to labels the owner has.
+- **The detail panel is deliberately not optimistic.** The test is whether the write changes which rows
+  are shown. Completing or moving does; editing a title does not, so waiting is free and buys a real
+  Save button and field-level errors. Labels are the exception inside it — a toggle gated behind Save
+  is a toggle people mistrust, so it writes on click and reverts itself on failure.
+- **Drag is off unless the sort is manual.** Under date or priority sort the order comes from the
+  query, so a dropped row would snap back on the next render. An affordance the data cannot honour is
+  removed rather than left to fail.
+
+### Bugs this milestone found
+
+- **A brand-new visitor could not create a list.** Only `createTask` minted the owner row, so the
+  first click of `+` beside Lists hit a service call with no owner and returned an error the UI
+  swallowed. Identity bootstrapping belongs on **every** entry point that creates owned data, not
+  just the first one that happened to be built — hence a second helper, `authorizeCreate`, which calls
+  `ensureOwner` and takes the browser's time zone for the owner row it may create.
+- **Zod silently stripped `listId` from the create payload.** Typing `#home` parsed, showed a chip, and
+  then filed the task to Inbox. `safeParse` drops unknown keys rather than failing, so the client was
+  sending a field the schema never admitted and nothing reported it. Fixed by extending
+  `newTaskSchema` — and by validating that the `listId` and `labelIds` actually belong to the caller,
+  which the first version did not.
+- **`export const dynamic` is incompatible with `cacheComponents`.** The `[id]` routes needed
+  `instant = false` instead; the familiar escape hatch is a build error under this config.
+
+### Known gaps
+
+- Subtasks are creatable and completable but not reorderable or nestable beyond one level.
+- Search is `ILIKE '%q%'` over title and notes with no relevance ranking — open tasks first, then
+  manual order, capped at 30. A leading wildcard cannot use an index either, so it is a scan per
+  keystroke. Fine at personal-list scale; `tsvector` + GIN is the answer if it ever isn't.
+- Keys from `fractional-indexing` grow without bound under repeated insertion at the same position.
+  A rebalance pass is the standard remedy and is not written — it needs a list long enough to matter.
+- Deleting a label does not confirm, unlike deleting a list. Labels carry less and are cheaper to
+  recreate, but the asymmetry is a decision made by omission rather than on purpose.
 
 ---
 

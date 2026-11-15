@@ -1,16 +1,9 @@
 import Link from "next/link";
-import {
-  Archive,
-  CalendarCheck,
-  CalendarDays,
-  Inbox,
-  Plus,
-  Search,
-  SquareCheck,
-} from "lucide-react";
+import { Archive, CalendarCheck, CalendarDays, Inbox, Search, SquareCheck } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { Brand } from "@/components/brand";
+import { AddToRail } from "@/components/rail-actions";
 import { LIST_DOT } from "@/lib/colours";
 import type { Label, List } from "@/lib/types";
 
@@ -25,7 +18,9 @@ import type { Label, List } from "@/lib/types";
  * does not move when the source changes.
  */
 
-export type ViewKey = "today" | "upcoming" | "inbox" | "completed";
+/** The rail highlights one of the four fixed views; list and label routes
+ *  highlight their own row instead, so they are separate keys. */
+export type ViewKey = "today" | "upcoming" | "inbox" | "completed" | "list" | "label";
 
 export type RailCounts = { due: number; inbox: number; upcoming: number; completed: number };
 
@@ -72,36 +67,40 @@ function views(counts: RailCounts): ViewRow[] {
   ];
 }
 
-function SectionHeading({ title, action }: { title: string; action: string }) {
+function SectionHeading({
+  title,
+  kind,
+  existingCount,
+}: {
+  title: string;
+  kind: "list" | "label";
+  existingCount: number;
+}) {
   return (
     <div className="flex h-7 items-center justify-between pr-1 pb-1 pl-2.5">
       <h2 className="text-ink-2 text-[13px] font-[650]">{title}</h2>
-      <button
-        type="button"
-        aria-label={action}
-        className="text-ink-3 hover:bg-rail-hover hover:text-ink grid size-6 place-items-center rounded transition-colors"
-      >
-        <Plus className="size-4" strokeWidth={2} />
-      </button>
+      <AddToRail kind={kind} existingCount={existingCount} />
     </div>
   );
 }
 
-function Frame({ children }: { children: React.ReactNode }) {
+function Frame({ search, children }: { search?: React.ReactNode; children: React.ReactNode }) {
   return (
     <nav
       aria-label="Views and lists"
       className="w-rail border-rail-line bg-rail hidden shrink-0 flex-col overflow-y-auto border-r p-3 md:flex"
     >
       <Brand />
-      <button
-        type="button"
-        className="rounded-cell border-hair bg-card-paper text-ink-3 hover:border-field-edge mb-1 flex h-9 items-center gap-2 border px-2.5 text-[14px] transition-colors"
-      >
-        <Search className="size-4" strokeWidth={1.9} />
-        <span className="flex-1 text-left">Search</span>
-        <kbd className="border-hair text-ink-3 rounded border px-1.5 font-sans text-[11px]">/</kbd>
-      </button>
+      {search ?? (
+        <div
+          aria-hidden
+          className="rounded-cell border-hair bg-card-paper text-ink-3 mb-1 flex h-9 items-center gap-2 border px-2.5 text-[14px]"
+        >
+          <Search className="size-4" strokeWidth={1.9} />
+          <span className="flex-1 text-left">Search</span>
+          <kbd className="border-hair rounded border px-1.5 font-sans text-[11px]">/</kbd>
+        </div>
+      )}
       {children}
     </nav>
   );
@@ -134,20 +133,26 @@ export function RailFallback({ current }: { current: ViewKey }) {
 
 export function Rail({
   current,
+  currentId,
   lists,
   labels,
   counts,
+  search,
 }: {
   current: ViewKey;
+  /** Which list or label is open, when `current` is "list" or "label". */
+  currentId?: string;
   lists: List[];
   labels: Label[];
   counts: RailCounts;
+  /** The search dialog, passed in so the rail stays a Server Component. */
+  search?: React.ReactNode;
 }) {
   const active = lists.filter((l) => !l.isArchived);
   const archivedCount = lists.length - active.length;
 
   return (
-    <Frame>
+    <Frame search={search}>
       <ul className="flex list-none flex-col gap-px">
         {views(counts).map((view) => {
           const isCurrent = view.key === current;
@@ -174,11 +179,15 @@ export function Rail({
       </ul>
 
       <div className="mt-5">
-        <SectionHeading title="Lists" action="New list" />
+        <SectionHeading title="Lists" kind="list" existingCount={lists.length} />
         <ul className="flex list-none flex-col gap-px">
           {active.map((list) => (
             <li key={list.id}>
-              <div className={`${ROW} ${ROW_IDLE}`}>
+              <Link
+                href={`/list/${list.id}`}
+                aria-current={current === "list" && currentId === list.id ? "page" : undefined}
+                className={`${ROW} ${current === "list" && currentId === list.id ? ROW_CURRENT : ROW_IDLE}`}
+              >
                 {list.emoji ? (
                   <span className="w-4 flex-none text-center text-[13px] leading-none">
                     {list.emoji}
@@ -189,7 +198,7 @@ export function Rail({
                   />
                 )}
                 <span className="flex-1 truncate">{list.name}</span>
-              </div>
+              </Link>
             </li>
           ))}
         </ul>
@@ -202,14 +211,18 @@ export function Rail({
       </div>
 
       <div className="mt-5">
-        <SectionHeading title="Labels" action="New label" />
+        <SectionHeading title="Labels" kind="label" existingCount={labels.length} />
         <ul className="flex list-none flex-col gap-px">
           {labels.map((label) => (
             <li key={label.id}>
-              <div className={`${ROW} ${ROW_IDLE}`}>
+              <Link
+                href={`/label/${label.id}`}
+                aria-current={current === "label" && currentId === label.id ? "page" : undefined}
+                className={`${ROW} ${current === "label" && currentId === label.id ? ROW_CURRENT : ROW_IDLE}`}
+              >
                 <span className="text-ink-3 w-4 flex-none text-center">@</span>
                 <span className="flex-1 truncate">{label.name}</span>
-              </div>
+              </Link>
             </li>
           ))}
         </ul>

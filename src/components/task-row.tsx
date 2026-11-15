@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Trash2 } from "lucide-react";
+import { GripVertical, PanelRight, Trash2 } from "lucide-react";
 
 import { LIST_DOT } from "@/lib/colours";
 import { formatDue, formatTime, isOverdue } from "@/lib/dates";
@@ -34,6 +34,8 @@ export function TaskRow({
   onComplete,
   onRename,
   onDelete,
+  onOpenDetail,
+  dragHandle,
 }: {
   task: Task;
   /**
@@ -49,6 +51,10 @@ export function TaskRow({
   onComplete: () => void;
   onRename: (title: string) => void;
   onDelete: () => void;
+  /** Opens the detail panel. Omitted where there is no panel to open. */
+  onOpenDetail?: () => void;
+  /** Drag handle props from dnd-kit, when the row is sortable. */
+  dragHandle?: React.HTMLAttributes<HTMLButtonElement>;
 }) {
   const [editing, setEditing] = useState(false);
   const input = useRef<HTMLInputElement>(null);
@@ -64,7 +70,17 @@ export function TaskRow({
   }
 
   return (
-    <li className="group border-hair-soft bg-ground hover:bg-hover focus-within:bg-blue-tint grid grid-cols-[22px_minmax(0,1fr)_auto] items-start gap-x-3 border-b px-2 py-[11px] transition-colors">
+    <li className="group border-hair-soft bg-ground hover:bg-hover focus-within:bg-blue-tint relative grid grid-cols-[22px_minmax(0,1fr)_auto] items-start gap-x-3 border-b px-2 py-[11px] transition-colors">
+      {dragHandle && (
+        <button
+          type="button"
+          {...dragHandle}
+          aria-label={`Reorder ${task.title}`}
+          className="text-hair-strong hover:text-ink-3 absolute top-3 -left-4 hidden size-5 cursor-grab place-items-center rounded opacity-0 group-hover:grid group-hover:opacity-100 focus-visible:grid focus-visible:opacity-100 md:block"
+        >
+          <GripVertical className="size-4" strokeWidth={2} />
+        </button>
+      )}
       <input
         type="checkbox"
         checked={done}
@@ -140,6 +156,16 @@ export function TaskRow({
 
       <div className="flex items-center gap-1.5">
         <PriorityFlag priority={task.priority} />
+        {onOpenDetail && (
+          <button
+            type="button"
+            onClick={onOpenDetail}
+            aria-label={`Open details for ${task.title}`}
+            className="text-ink-3 hover:bg-hover hover:text-ink grid size-7 place-items-center rounded opacity-0 transition group-hover:opacity-100 focus-visible:opacity-100"
+          >
+            <PanelRight className="size-4" strokeWidth={1.9} />
+          </button>
+        )}
         <button
           type="button"
           onClick={onDelete}

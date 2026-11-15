@@ -3,7 +3,15 @@
 import { revalidatePath } from "next/cache";
 
 import { fail, ok, type ActionResult } from "@/lib/actions/result";
-import { createTasksSchema, renameTaskSchema, taskIdSchema } from "@/lib/schemas";
+import {
+  createSubtaskSchema,
+  createTasksSchema,
+  moveSchema,
+  renameTaskSchema,
+  setLabelsSchema,
+  taskIdSchema,
+  updateTaskSchema,
+} from "@/lib/schemas";
 import {
   assertCan,
   ensureOwner,
@@ -119,6 +127,70 @@ export async function renameTask(input: unknown): Promise<ActionResult> {
   assertCan(principal, "task:update");
 
   await taskService.renameTask(principal, parsed.data.id, parsed.data.title);
+  revalidateViews();
+  return ok();
+}
+
+// ── M4 ──────────────────────────────────────────────────────────────────────
+
+/** The detail panel sends only the fields it changed. */
+export async function updateTask(input: unknown): Promise<ActionResult> {
+  const parsed = updateTaskSchema.safeParse(input);
+  if (!parsed.success)
+    return fail(parsed.error.issues[0]?.message ?? "That change could not be saved.");
+
+  const principal = await getPrincipal();
+  if (principal.kind === "none") return fail("Add a task first.");
+  assertCan(principal, "task:update");
+
+  const { id, ...fields } = parsed.data;
+  try {
+    await taskService.updateTask(principal, id, fields);
+  } catch {
+    // The service rejects a listId belonging to someone else.
+    return fail("That list is not available.");
+  }
+  revalidateViews();
+  return ok();
+}
+
+export async function setTaskLabels(input: unknown): Promise<ActionResult> {
+  const parsed = setLabelsSchema.safeParse(input);
+  if (!parsed.success) return fail("Those labels could not be saved.");
+
+  const principal = await getPrincipal();
+  if (principal.kind === "none") return fail("Add a task first.");
+  assertCan(principal, "task:update");
+
+  await taskService.setTaskLabels(principal, parsed.data.id, parsed.data.labelIds);
+  revalidateViews();
+  return ok();
+}
+
+export async function createSubtask(input: unknown): Promise<ActionResult> {
+  const parsed = createSubtaskSchema.safeParse(input);
+  if (!parsed.success)
+    return fail(parsed.error.issues[0]?.message ?? "That subtask could not be added.");
+
+  const principal = await getPrincipal();
+  if (principal.kind === "none") return fail("Add a task first.");
+  assertCan(principal, "task:create");
+
+  await taskService.createSubtask(principal, parsed.data.parentId, parsed.data.title);
+  revalidateViews();
+  return ok();
+}
+
+/** The new sort key is computed on the client from the drop neighbours. */
+export async function moveTask(input: unknown): Promise<ActionResult> {
+  const parsed = moveSchema.safeParse(input);
+  if (!parsed.success) return fail("That task could not be moved.");
+
+  const principal = await getPrincipal();
+  if (principal.kind === "none") return fail("Add a task first.");
+  assertCan(principal, "task:update");
+
+  await taskService.moveTask(principal, parsed.data.id, parsed.data.position);
   revalidateViews();
   return ok();
 }
