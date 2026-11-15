@@ -175,6 +175,33 @@
 }
 
 @layer base {
+  /**
+   * Tailwind v4's preflight stopped setting `cursor: pointer` on buttons — it
+   * matches the browser default, which is `default`. The result is that every
+   * icon button in the app looked unclickable. Restoring it here rather than
+   * adding `cursor-pointer` to each call site means new buttons get it too.
+   *
+   * This lives in `base`, which sits *below* utilities in the cascade, so the
+   * deliberate exceptions still win: `cursor-grab` on a drag handle and
+   * `cursor-text` on a row title that clicks into a rename field.
+   */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  [role="option"],
+  /* cmdk rows are divs with a data attribute, not `role="option"`. */
+  [cmdk-item],
+  /* A dropdown is as clickable as a button; the sort control already said so
+     with a utility class, which made it the odd one out. */
+  select:not(:disabled),
+  summary {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  [role="button"][aria-disabled="true"] {
+    cursor: not-allowed;
+  }
+
   * {
     @apply border-border outline-ring/50;
   }
