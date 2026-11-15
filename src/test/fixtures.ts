@@ -78,6 +78,8 @@ const t = (task: Partial<Task> & Pick<Task, "id" | "title">): Task => ({
   priority: 4,
   position: "a0",
   labelIds: [],
+  repeat: null,
+  seriesId: null,
   completedAt: null,
   ...task,
 });

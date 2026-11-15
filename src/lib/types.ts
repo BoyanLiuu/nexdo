@@ -3,6 +3,10 @@
  * the fixtures import for a service call without reshaping any component.
  */
 
+import type { Repeat } from "@/lib/schemas";
+
+export type { Repeat };
+
 export type ListColour =
   "grass" | "sky" | "violet" | "orange" | "rose" | "teal" | "olive" | "brown" | "slate";
 
@@ -41,4 +45,11 @@ export type Task = {
   position: string;
   labelIds: string[];
   completedAt: string | null;
+  /** The repeat rule, re-parsed from the `Json` column. */
+  repeat: Repeat | null;
+  /**
+   * Shared by every occurrence of one repeating task, so completion history
+   * survives. The first occurrence's own id becomes the series id.
+   */
+  seriesId: string | null;
 };

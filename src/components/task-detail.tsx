@@ -13,6 +13,7 @@ import {
   SidePanelDescription,
   SidePanelTitle,
 } from "@/components/ui/side-panel";
+import { RepeatEditor } from "@/components/repeat-editor";
 import { attempt } from "@/lib/actions/attempt";
 import { createSubtask, setTaskLabels, updateTask } from "@/lib/actions/task";
 import { LIST_DOT } from "@/lib/colours";
@@ -258,6 +259,13 @@ export function TaskDetail({
                 </div>
               </div>
             )}
+
+            <RepeatEditor
+              taskId={task.id}
+              repeat={task.repeat}
+              dueDate={task.dueDate}
+              today={now}
+            />
 
             <div>
               <span className="text-ink-2 mb-1.5 block text-[12.5px] font-[650]">

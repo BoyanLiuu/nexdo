@@ -16,7 +16,7 @@ import {
   useSortable,
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
-import type { ReactNode } from "react";
+import { useId, type ReactNode } from "react";
 
 import type { Task } from "@/lib/types";
 
@@ -47,6 +47,12 @@ export function SortableRows({
     isDragging: boolean;
   }) => ReactNode;
 }) {
+  // dnd-kit derives its `aria-describedby` ids from a module-level counter, which
+  // starts at a different value on the server (which has rendered other lists
+  // already) than in a fresh client — a hydration mismatch logged as an error on
+  // every page with a sortable list. A stable id from React fixes it at source.
+  const dndId = useId();
+
   const sensors = useSensors(
     // A small distance threshold so a click on the handle is still a click.
     useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
@@ -66,6 +72,7 @@ export function SortableRows({
 
   return (
     <DndContext
+      id={dndId}
       sensors={sensors}
       collisionDetection={closestCenter}
       modifiers={[restrictToVerticalAxis]}

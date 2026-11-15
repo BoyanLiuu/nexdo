@@ -3,10 +3,11 @@ import { prisma } from "@/lib/server/prisma";
 
 /** Upcoming shows a week, starting the day after today. */
 export const UPCOMING_DAYS = 7;
-import type { Prisma } from "@/generated/prisma/client";
-import { addDays } from "@/lib/dates";
+import { Prisma } from "@/generated/prisma/client";
+import { addDays, todayIn } from "@/lib/dates";
 import { positionAfter } from "@/lib/ordering";
-import type { NewTask } from "@/lib/schemas";
+import { repeatSchema, type NewTask, type Repeat } from "@/lib/schemas";
+import { nextDue, schedulesFromCompletion } from "@/lib/repeat";
 import type { Label, List, Priority, Task } from "@/lib/types";
 
 /**
@@ -30,6 +31,8 @@ const TASK_SELECT = {
   priority: true,
   position: true,
   completedAt: true,
+  repeat: true,
+  seriesId: true,
   labels: { select: { labelId: true } },
 } as const;
 
@@ -44,6 +47,8 @@ type TaskRow = {
   priority: number;
   position: string;
   completedAt: Date | null;
+  repeat: Prisma.JsonValue | null;
+  seriesId: string | null;
   labels: { labelId: string }[];
 };
 
@@ -62,7 +67,20 @@ function toTask(row: TaskRow): Task {
     position: row.position,
     labelIds: row.labels.map((l) => l.labelId),
     completedAt: row.completedAt?.toISOString() ?? null,
+    repeat: parseRepeat(row.repeat),
+    seriesId: row.seriesId,
   };
+}
+
+/**
+ * A `Json` column is untyped storage. A rule written by an older build, or by
+ * hand in a SQL console, must not crash a view — an unreadable rule reads as no
+ * rule, so the task simply stops repeating instead of taking the page down.
+ */
+function parseRepeat(value: Prisma.JsonValue | null): Repeat | null {
+  if (value === null || value === undefined) return null;
+  const parsed = repeatSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
 }
 
 export type SortKey = "manual" | "due" | "priority";
@@ -246,20 +264,164 @@ export async function createTasks(principal: OwnedPrincipal, inputs: NewTask[]):
 }
 
 export async function completeTask(principal: OwnedPrincipal, id: string): Promise<void> {
-  // updateMany, not update: `where` can then include ownerId, so another
-  // owner's id updates zero rows instead of throwing a not-found that would
-  // confirm the row exists.
+  // Completion now costs a read before the write, because what happens next
+  // depends on a rule that only the row knows. That is a real cost on the
+  // app's hottest action and it is paid by every task, repeating or not —
+  // accepted because the click is already optimistic, so the user waits for
+  // neither statement.
+  const task = await prisma.task.findFirst({
+    where: { id, ownerId: principal.ownerId, deletedAt: null, completedAt: null },
+    // The view select already names every field the next occurrence is cloned
+    // from. Spelling them out again is a second list to forget to update.
+    select: TASK_SELECT,
+  });
+  if (!task) return;
+
+  const completedAt = new Date();
+  const rule = parseRepeat(task.repeat);
+  const base =
+    rule && schedulesFromCompletion(rule)
+      ? todayIn(principal.timeZone)
+      : task.dueDate?.trim() || null;
+
+  // A fixed rule with no due date has nothing to advance from. Rather than
+  // inventing an anchor, the task completes once and stops — and the editor
+  // refuses to set such a rule in the first place.
+  if (!rule || !base) {
+    await prisma.task.updateMany({
+      where: { id, ownerId: principal.ownerId, deletedAt: null },
+      data: { completedAt },
+    });
+    await touch(principal);
+    return;
+  }
+
+  // The first occurrence's own id becomes the series id, so a series needs no
+  // separate table and no id generated up front.
+  const seriesId = task.seriesId ?? task.id;
+
+  // One transaction, because a crash between these two statements would either
+  // lose the series or complete nothing. The whole point of the occurrence
+  // model is that history is a row, so a half-written history is worse than an
+  // unrecorded completion.
+  await prisma.$transaction([
+    prisma.task.updateMany({
+      where: { id, ownerId: principal.ownerId, deletedAt: null },
+      data: { completedAt, seriesId },
+    }),
+    prisma.task.create({
+      data: {
+        ownerId: principal.ownerId,
+        listId: task.listId,
+        parentId: task.parentId,
+        title: task.title,
+        notes: task.notes,
+        dueDate: nextDue(rule, base),
+        dueTime: task.dueTime?.trim() || null,
+        priority: task.priority,
+        position: task.position,
+        repeat: rule,
+        seriesId,
+        labels: { create: task.labels.map((l) => ({ labelId: l.labelId })) },
+      },
+    }),
+  ]);
+  await touch(principal);
+}
+
+/**
+ * Undo of a completion — and for a repeating task that means undoing the
+ * occurrence its completion spawned, or the undo would leave two live copies.
+ *
+ * The spawned row is found without a back-pointer column because of an
+ * invariant the model gives for free: **a series has at most one open
+ * occurrence at a time.** Only completing spawns the next one, so the open
+ * sibling is necessarily the one this completion created.
+ */
+export async function uncompleteTask(principal: OwnedPrincipal, id: string): Promise<void> {
+  const task = await prisma.task.findFirst({
+    where: { id, ownerId: principal.ownerId, deletedAt: null },
+    select: { seriesId: true },
+  });
+  if (!task) return;
+
+  // Built once and used in exactly one of the two branches below. A Prisma
+  // query is lazy — it runs when awaited or when handed to `$transaction`, not
+  // when constructed — so this cannot fire twice.
+  const reopen = prisma.task.updateMany({
+    where: { id, ownerId: principal.ownerId, deletedAt: null },
+    data: { completedAt: null },
+  });
+
+  if (task.seriesId === null) {
+    await reopen;
+    await touch(principal);
+    return;
+  }
+
+  await prisma.$transaction([
+    // Soft, not hard: undo should be reversible too, and the row may have been
+    // edited between the completion and the undo.
+    prisma.task.updateMany({
+      where: {
+        seriesId: task.seriesId,
+        ownerId: principal.ownerId,
+        completedAt: null,
+        deletedAt: null,
+        id: { not: id },
+      },
+      data: { deletedAt: new Date() },
+    }),
+    reopen,
+  ]);
+  await touch(principal);
+}
+
+/**
+ * Move a repeating task to its next occurrence without recording a completion.
+ *
+ * Skipping advances the same row rather than closing it and opening another:
+ * you did not do the thing, so there is no history to write, and the series
+ * keeps its single open occurrence.
+ */
+export async function skipOccurrence(principal: OwnedPrincipal, id: string): Promise<void> {
+  const task = await prisma.task.findFirst({
+    where: { id, ownerId: principal.ownerId, deletedAt: null, completedAt: null },
+    select: { dueDate: true, repeat: true },
+  });
+  if (!task) return;
+
+  const rule = parseRepeat(task.repeat);
+  if (!rule) return;
+
+  // An `afterCompletion` rule has no schedule to skip along, so it counts from
+  // today — "do it three days from now instead" is the only sensible reading.
+  const base = schedulesFromCompletion(rule)
+    ? todayIn(principal.timeZone)
+    : task.dueDate?.trim() || null;
+  if (!base) return;
+
   await prisma.task.updateMany({
     where: { id, ownerId: principal.ownerId, deletedAt: null },
-    data: { completedAt: new Date() },
+    data: { dueDate: nextDue(rule, base) },
   });
   await touch(principal);
 }
 
-export async function uncompleteTask(principal: OwnedPrincipal, id: string): Promise<void> {
+/**
+ * Set or clear the repeat rule. `null` clears it, which is how a repeating task
+ * stops repeating — the occurrences already in history stay there.
+ */
+export async function setRepeat(
+  principal: OwnedPrincipal,
+  id: string,
+  repeat: Repeat | null,
+): Promise<void> {
   await prisma.task.updateMany({
     where: { id, ownerId: principal.ownerId, deletedAt: null },
-    data: { completedAt: null },
+    // `DbNull` writes SQL NULL; plain `null` would store the JSON value `null`,
+    // which is a rule that exists and says nothing.
+    data: { repeat: repeat ?? Prisma.DbNull },
   });
   await touch(principal);
 }

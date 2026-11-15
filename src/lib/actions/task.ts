@@ -9,6 +9,7 @@ import {
   moveSchema,
   renameTaskSchema,
   setLabelsSchema,
+  setRepeatSchema,
   taskIdSchema,
   updateTaskSchema,
 } from "@/lib/schemas";
@@ -94,6 +95,34 @@ export async function completeTask(input: unknown): Promise<ActionResult> {
   if ("error" in auth) return fail(auth.error);
 
   await taskService.completeTask(auth.principal, auth.id);
+  revalidateViews();
+  return ok();
+}
+
+/** Advance a repeating task without recording that it was done. */
+export async function skipOccurrence(input: unknown): Promise<ActionResult> {
+  const auth = await authorize(input, "task:repeat");
+  if ("error" in auth) return fail(auth.error);
+
+  await taskService.skipOccurrence(auth.principal, auth.id);
+  revalidateViews();
+  return ok();
+}
+
+export async function setRepeat(input: unknown): Promise<ActionResult> {
+  const parsed = setRepeatSchema.safeParse(input);
+  if (!parsed.success)
+    return fail(parsed.error.issues[0]?.message ?? "That repeat rule could not be saved.");
+
+  const principal = await getPrincipal();
+  if (principal.kind === "none") return fail("Nothing to change yet.");
+  try {
+    assertCan(principal, "task:repeat");
+  } catch {
+    return fail("Sign in to use repeating tasks.");
+  }
+
+  await taskService.setRepeat(principal, parsed.data.id, parsed.data.repeat);
   revalidateViews();
   return ok();
 }

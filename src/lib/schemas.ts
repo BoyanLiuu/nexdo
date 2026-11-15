@@ -120,3 +120,33 @@ export const createSubtaskSchema = z.object({
 export const moveSchema = z.object({ id: taskId, position: z.string().min(1).max(200) });
 
 export const searchSchema = z.object({ q: z.string().trim().min(2).max(100) });
+
+// ── M5 ──────────────────────────────────────────────────────────────────────
+
+/** Capped so a rule cannot be used to schedule something a century out. */
+const interval = z.number().int().min(1).max(99);
+
+/**
+ * The repeat rule, and the only definition of it. `Repeat` is inferred from
+ * this, the editor's resolver uses it, the action validates with it, and the
+ * service re-parses the JSON column through it — a `Json` column is untyped
+ * storage, so a row written by an older build or by hand is untrusted input
+ * like anything else.
+ */
+export const repeatSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("daily"), interval }),
+  z.object({ kind: z.literal("weekdays") }),
+  z.object({
+    kind: z.literal("weekly"),
+    interval,
+    weekdays: z.array(z.number().int().min(0).max(6)).nonempty("pick at least one day").max(7),
+  }),
+  z.object({ kind: z.literal("monthly"), interval, day: z.number().int().min(1).max(31) }),
+  z.object({ kind: z.literal("afterCompletion"), days: z.number().int().min(1).max(365) }),
+]);
+
+export type Repeat = z.infer<typeof repeatSchema>;
+export type RepeatKind = Repeat["kind"];
+
+/** `null` clears the rule, which is how a repeating task stops repeating. */
+export const setRepeatSchema = z.object({ id: taskId, repeat: repeatSchema.nullable() });

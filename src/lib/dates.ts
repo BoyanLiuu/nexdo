@@ -54,6 +54,33 @@ export function weekdayOf(isoDate: string): number {
   return new Date(parts(isoDate).utc).getUTCDay();
 }
 
+/** `month` is 1-12. Day 0 of the next month is the last day of this one. */
+/** The day-of-month of a calendar date, without parsing it into a `Date`. */
+export function dayOfMonth(isoDate: string): number {
+  return parts(isoDate).d;
+}
+
+export function daysInMonth(year: number, month: number): number {
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+/**
+ * `months` calendar months on from the month of `isoDate`, landing on `day` —
+ * or on the last day of the target month when it has no such day.
+ *
+ * `day` is passed in rather than taken from `isoDate` because a monthly repeat
+ * rule remembers the day the user asked for. "The 31st" clamped to 28 February
+ * must still return to the 31st in March, which it cannot do if each step reads
+ * the day off the previous result.
+ */
+export function addMonths(isoDate: string, months: number, day: number): string {
+  const { y, m } = parts(isoDate);
+  const target = m - 1 + months;
+  const year = y + Math.floor(target / 12);
+  const month = (((target % 12) + 12) % 12) + 1;
+  return `${year}-${pad(month)}-${pad(Math.min(day, daysInMonth(year, month)))}`;
+}
+
 /**
  * ISO date strings compare correctly as strings, which is the reason they are
  * stored as text rather than as a DATE column.
@@ -78,7 +105,8 @@ function pad(n: number): string {
   return String(n).padStart(2, "0");
 }
 
-const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+/** Exported so recurrence names days from the same array the views do. */
+export const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const WEEKDAY_LONG = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const MONTH = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const MONTH_LONG = [

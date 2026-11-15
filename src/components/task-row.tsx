@@ -1,9 +1,10 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { GripVertical, PanelRight, Trash2 } from "lucide-react";
+import { GripVertical, PanelRight, Repeat2, Trash2 } from "lucide-react";
 
 import { LIST_DOT } from "@/lib/colours";
+import { describeRepeat } from "@/lib/repeat";
 import { formatDue, formatTime, isOverdue } from "@/lib/dates";
 import type { Label, List, Priority, Task } from "@/lib/types";
 
@@ -113,7 +114,12 @@ export function TaskRow({
           </button>
         )}
 
-        {(task.dueDate || list || labels?.length || task.notes || subtasks.length > 0) && (
+        {(task.dueDate ||
+          list ||
+          labels?.length ||
+          task.notes ||
+          task.repeat ||
+          subtasks.length > 0) && (
           <div className="text-ink-3 mt-1 flex flex-wrap items-center gap-x-3.5 gap-y-[3px] text-[13px] leading-[1.4]">
             {task.dueDate && (
               <span
@@ -144,6 +150,16 @@ export function TaskRow({
                 @{l.name}
               </span>
             ))}
+
+            {task.repeat && (
+              <span
+                className="inline-flex items-center gap-[5px] whitespace-nowrap"
+                title={describeRepeat(task.repeat)}
+              >
+                <Repeat2 className="size-3.5" strokeWidth={2} />
+                <span className="sr-only">{describeRepeat(task.repeat)}</span>
+              </span>
+            )}
 
             {subtasks.length > 0 && (
               <span className="inline-flex items-center gap-[5px] whitespace-nowrap">

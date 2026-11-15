@@ -4,8 +4,8 @@ _Focus on what's next._
 
 Progress tracker for the build: what has actually landed, and the decisions made along the way.
 
-**Last verified:** 2026-11-15 — M0–M4 complete. `pnpm check` runs 65 unit tests under four time
-zones; `pnpm test:e2e` runs 32 across Chromium and WebKit (8 desktop-only).
+**Last verified:** 2026-11-15 — M0–M5 complete. `pnpm check` runs 82 unit tests under four time
+zones; `pnpm test:e2e` runs 32 across Chromium and WebKit (8 skipped, 0 flaky).
 
 |     | Milestone                                     | Status  |
 | --- | --------------------------------------------- | ------- |
@@ -14,7 +14,7 @@ zones; `pnpm test:e2e` runs 32 across Chromium and WebKit (8 desktop-only).
 | M2  | Natural-language capture                      | ✅ done |
 | M3  | Dates and views                               | ✅ done |
 | M4  | Lists, labels, detail, ordering, search       | ✅ done |
-| M5  | Recurrence                                    | ☐       |
+| M5  | Recurrence                                    | ✅ done |
 | M6  | Keyboard, a11y, motion, polish                | ☐       |
 | M7  | Clerk, claim, capability gating               | ☐       |
 | M8  | Deploy                                        | ☐       |
@@ -364,6 +364,86 @@ renamed two tests whose names claimed "everywhere" after the loop was gone.
   A rebalance pass is the standard remedy and is not written — it needs a list long enough to matter.
 - Deleting a label does not confirm, unlike deleting a list. Labels carry less and are cheaper to
   recreate, but the asymmetry is a decision made by omission rather than on purpose.
+
+---
+
+## M5 — Recurrence ✅
+
+- [x] `lib/repeat.ts`: `nextDue()` over the five rule kinds, plus `describeRepeat()` for the row badge
+      and the editor's summary line. Pure calendar-string arithmetic, no clock
+- [x] `repeatSchema` as a Zod discriminated union — the single definition, used by the editor, the
+      action, and the service when it re-parses the `Json` column
+- [x] `dates.ts` gained `addMonths(date, months, day)` and `daysInMonth`, with the clamping rule
+- [x] Completing a repeating task writes the completion and inserts the next occurrence in **one
+      transaction**, both carrying a shared `seriesId`
+- [x] Undo of a completion withdraws the occurrence that completion spawned
+- [x] Skip advances the same row without recording a completion
+- [x] Repeat editor in the detail panel, all five kinds, with a day picker for weekly rules
+- [x] Repeat badge on the row, with the rule in words for screen readers
+- [x] 82 unit tests under four zones; e2e 32 passed, 0 flaky
+- [x] No migration: `repeat` and `seriesId` were in the schema from M1
+
+### Decisions log
+
+- **A Zod discriminated union, not `RRULE`.** iCalendar's grammar covers every _fixed_ schedule and
+  cannot express "three days after I last did it" — which is the rule people actually want for
+  watering plants. A five-member union covers what the app offers, is exhaustively checked by the
+  compiler (a new kind breaks every `switch` until handled), and reads as itself in the database.
+- **Each occurrence is a row; the first occurrence's id becomes the `seriesId`.** No series table and
+  no id minted up front. Completion history is then just rows, which is what makes Completed show
+  "you did this five times" rather than one row with a counter.
+- **Only the next occurrence is materialised, never a horizon of them.** One live row per series at any
+  time. That invariant is load-bearing — see undo, below.
+- **Undo withdraws the spawned occurrence, found without a back-pointer column.** Because only
+  completing spawns the next one, the _open_ sibling in the series is necessarily the one this
+  completion created. The 5-second undo toast makes this a routine path, not an edge case: without it,
+  every undo of a recurring task would leave two live copies.
+- **Skip advances the same row.** You did not do the thing, so there is no history to write — and the
+  series keeps its single open occurrence for free.
+- **The monthly rule remembers the day the user asked for.** "The 31st" clamped to 28 February returns
+  to 31 March, which is impossible if each step reads the day off the previous result.
+- **No "this occurrence or the series?" dialog.** With one live occurrence, editing it _is_ editing the
+  series — the next occurrence is cloned from this row at completion time, so changes carry forward by
+  construction and past occurrences stay as history. This resolves the plan's open question 7: not
+  merely acceptable, it is the only coherent reading of the model.
+- **The repeat editor is not part of the panel's React Hook Form**, which the plan had assumed. The
+  rule is a discriminated union, so one form's values type would have to be that union and every
+  `register` path would depend on the selected kind. The schema is still the single definition — the
+  editor validates with it before sending, exactly as the action does on arrival.
+- **An unreadable rule reads as no rule.** A `Json` column is untyped storage, so the service
+  re-parses it through the schema; a row written by an older build stops repeating instead of taking
+  a view down.
+
+### Found in review of this milestone
+
+- **A comment that lied about cost.** It claimed a plain completion "skips the read entirely"; the code
+  reads unconditionally, because only the row knows whether it repeats. Completion went from one
+  statement to two for _every_ task. The cost is accepted — the click is optimistic, so the user waits
+  for neither — but the comment now says so.
+- **`seriesHistory()` had no callers.** Written for a history list the panel does not have. Deleted,
+  same as `restoreTask` in M1.
+- **Two separate imports of `@/lib/dates`** in one file, which lint does not flag. Merged.
+
+### Bugs this milestone found
+
+- **A hydration mismatch from M4's drag-and-drop**, surfaced while verifying recurrence in a browser.
+  `@dnd-kit` derives its `aria-describedby` ids from a counter that starts at a different value on the
+  server (which has rendered other lists already) than in a fresh client, so React logged an error on
+  every page with a sortable list. Fixed by passing `DndContext` a stable `useId()`. It had been there
+  since M4 and no test caught it — e2e asserts on failed _requests_, not on console errors.
+
+### Known gaps
+
+- Subtasks are not cloned onto the next occurrence, so a repeating checklist loses its items. The
+  common case is a bare repeating task; cloning a subtree is its own decision.
+- `position` is copied to the new occurrence, so a manually-ordered list keeps the task where it was.
+  Harmless today because the two rows never both sit in the same view.
+- **Upcoming is a fixed 7-day window**, which recurrence makes more noticeable: a monthly task is
+  invisible in the date views for three weeks, reachable only through its list or search.
+- The weekly interval has no anchor week. Cadence is relative to the last occurrence, so completing
+  "every other Monday" late shifts the following one rather than keeping the original fortnight.
+- No test covers the completion transaction rolling back, which the plan asked for. It needs a forced
+  insert failure against a real database; asserting it any other way would be asserting the mock.
 
 ---
 
