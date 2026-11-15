@@ -4,15 +4,15 @@ _Focus on what's next._
 
 Progress tracker for the build: what has actually landed, and the decisions made along the way.
 
-**Last verified:** 2026-11-15 — M0, M1 and M2 complete, `pnpm check` (43 unit tests) and
-`pnpm test:e2e` (19 tests, Chromium + WebKit) green.
+**Last verified:** 2026-11-15 — M0–M3 complete. `pnpm check` runs 52 unit tests under four time
+zones; `pnpm test:e2e` runs 26 across Chromium and WebKit (7 desktop-only).
 
 |     | Milestone                                     | Status  |
 | --- | --------------------------------------------- | ------- |
 | M0  | Scaffold and the Today screen (fixtures)      | ✅ done |
 | M1  | Database, principal, optimistic mutation path | ✅ done |
 | M2  | Natural-language capture                      | ✅ done |
-| M3  | Dates and views                               | ☐       |
+| M3  | Dates and views                               | ✅ done |
 | M4  | Lists, labels, detail, ordering, search       | ☐       |
 | M5  | Recurrence                                    | ☐       |
 | M6  | Keyboard, a11y, motion, polish                | ☐       |
@@ -204,6 +204,90 @@ ships in its own chunks and is verifiably absent from the initial payload.
 Parsing a future date now creates tasks that **leave the only view that exists**. Type "pay rent
 friday" on Today and the task is saved correctly and then invisible, because Upcoming arrives in M3.
 There is an e2e test asserting this so it is recorded as a known state rather than found as a bug.
+
+---
+
+## M3 — Dates and views ✅
+
+- [x] `lib/dates.ts` rebuilt: `todayIn(zone)` is the only function that reads a clock, and it demands a
+      zone. Everything else takes `YYYY-MM-DD` strings and is zone-independent by construction
+- [x] Arithmetic goes through `Date.UTC`, so day differences are exact integers, immune to DST, and
+      cannot mix a local-midnight `Date` with a UTC-parsed one
+- [x] `isOverdue`/`isToday`/`formatDue` lost their default `from` argument — a default let callers
+      silently fall back to the machine's zone, which is the bug the module exists to prevent
+- [x] Four views: Today (Overdue + Today), Upcoming (7 days, empty days kept), Inbox, Completed
+- [x] Per-view counts in the rail, and a bespoke empty state per view
+- [x] Sort by manual order, due date or priority, applied by the query and held in the URL
+- [x] Rail view rows are real `<Link>`s with `aria-current`, now that their routes exist
+- [x] One Suspense boundary for the rail and one for the body, so the shell prerenders — all four
+      routes build as `◐` and `instant = false` is gone
+- [x] 77 unit tests, run under Pacific/Midway, LA, UTC and Pacific/Kiritimati via `pnpm test:tz`
+
+### Decisions log
+
+- **The module's shape is the safeguard.** One clock-reading function that requires a zone; everything
+  else pure string arithmetic. I had already reintroduced the local/UTC mixing bug twice by accident —
+  once reading chrono through `toISOString()`, once in a copy-pasted formatter that broke at UTC+14 —
+  so M3 makes it structurally hard rather than relying on care.
+- **Sort lives in the URL, not component state.** The ordering is applied by the database, so the
+  server has to know it; a search param survives reload, can be linked, and needs no client store to
+  stay in step with the RSC payload.
+- **`searchParams` is awaited inside the Suspense boundary, not in the route.** Reading it in the route
+  body makes Next abandon prerendering the whole page, which costs the shell its instant paint.
+- **Upcoming keeps empty days.** The week's shape is information — a free Thursday is worth seeing.
+
+### Bugs this milestone found
+
+- **`revalidatePath("/")` only invalidated Today.** Add a task dated Friday, click Upcoming, and it was
+  missing until a hard reload. Every task mutation can change all four views and all four rail counts,
+  so actions now revalidate the whole tree under the root layout. Manual testing had missed it because
+  restarting the server cleared the cache.
+- **The Upcoming query was a day short of its own layout** — `lte addDays(today, UPCOMING_DAYS - 1)`
+  fetched six days while `groupByDay` laid out seven, so the last heading could never show anything.
+- **Capture could submit before the parser loaded.** Typing "pay rent friday" and pressing Enter inside
+  chrono's import window silently dropped the date and filed the task under today. Submit now waits for
+  the parser — but only for 2 seconds, because a slow or failed chunk fetch must never block saving.
+  The first version of that fix had no deadline and hung the submit on WebKit.
+
+### Hardening added after review
+
+- **A `beforeunload` guard while a write is in flight** (`lib/use-pending-write.ts`). Optimistic UI
+  reports success before the server confirms, so closing the tab inside that window cancels the
+  request — the task stays open in the database while the user watched it complete. Short window,
+  real loss, and it surfaces as "the app lost my task" with no reproduction. Wired into both places
+  that mutate.
+- **An e2e database guard** (`tests/guard-database.ts`, run as Playwright's `globalSetup`). The suite
+  writes, and the only thing between the dev project and production was whatever `DATABASE_URL`
+  happened to say — which gets tempting to repoint around deploy. It refuses to run if any `USER`
+  owner exists, since a dev database has only guests. Verified by inserting a fake account and
+  watching it refuse. `E2E_ALLOW_REAL_ACCOUNTS=1` overrides, deliberately.
+
+### Test audit
+
+77 unit tests became **52** with no loss of coverage. The `dates` suite looped the same assertions
+over five zone names while **changing nothing between iterations** — 24 identical tests that read as
+zone coverage and provided none. Real zone variation comes from `pnpm test:tz`, which starts the
+process under four `TZ` values. Also merged two `describe` blocks covering the same condition and
+renamed two tests whose names claimed "everywhere" after the loop was gone.
+
+### Known gaps
+
+- **E2E flakiness was the test helper, not the app.** Waiting on the Server Action's POST is only
+  needed where optimistic UI hides the write. For a create there is no optimistic insert, so the row
+  appearing already proves the server wrote it — the extra response wait was redundant, and on mobile
+  WebKit it was the whole flake. `mutate()` is now used only in the desktop-only cross-route checks.
+  Seven consecutive runs: six clean, one retried flake, down from a flake in every run.
+
+  A rare flake may remain and is not identified; it did not recur in four further runs. Treat a
+  `flaky` line as a finding rather than noise — `trace: "on-first-retry"` leaves a trace to open.
+
+- Four cross-route write tests are desktop-only. The behaviour is not mobile-specific, and several
+  parallel WebKit contexts on one machine made them flake on timing; mobile keeps rendering and
+  parsing coverage, where its layout and input model genuinely differ. E2E has one local retry.
+- E2E still leaves one guest owner per run. 98 had accumulated before this milestone and were cleared
+  by hand. M8's prune cron is the real answer; a separate test database would be cleaner.
+- The Today subtitle still shows only the long date. The design also shows local time, the zone name
+  and a note when UTC has rolled over — all of which need a live clock, so they are client-side work.
 
 ---
 

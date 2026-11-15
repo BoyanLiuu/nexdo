@@ -1,3 +1,4 @@
+import Link from "next/link";
 import {
   Archive,
   CalendarCheck,
@@ -7,7 +8,6 @@ import {
   Search,
   SquareCheck,
 } from "lucide-react";
-
 import type { LucideIcon } from "lucide-react";
 
 import { Brand } from "@/components/brand";
@@ -15,27 +15,62 @@ import { LIST_DOT } from "@/lib/colours";
 import type { Label, List } from "@/lib/types";
 
 /**
- * Views and lists. A visual shell in M0: every row is inert, because `/upcoming`,
- * `/inbox`, `/completed`, `/list/[id]` and `/label/[id]` do not exist until M3
- * and M4. Rendering them as links now would prefetch twelve 404s on first paint.
- * Each becomes a `<Link>` in the milestone that adds its route.
+ * Views and lists.
  *
- * All data arrives as props: the rail deliberately does not read the fixtures
- * itself, so M1 swaps one import in `page.tsx` and this file does not move.
+ * The view rows became real links in M3, when their routes started existing.
+ * List and label rows are still inert — `/list/[id]` and `/label/[id]` arrive in
+ * M4, and as links they would prefetch 404s on first paint.
+ *
+ * All data arrives as props, so the route decides what to fetch and this file
+ * does not move when the source changes.
  */
 
+export type ViewKey = "today" | "upcoming" | "inbox" | "completed";
+
+export type RailCounts = { due: number; inbox: number; upcoming: number; completed: number };
+
 type ViewRow = {
-  key: string;
+  key: ViewKey;
+  href: string;
   label: string;
   icon: LucideIcon;
   count?: number;
-  /** Show a non-zero count in vermilion, as Today's overdue tally does. */
+  /** Render a non-zero count in vermilion, as Today's overdue tally does. */
   alarming?: boolean;
 };
 
 const ROW =
   "flex h-9 items-center gap-2.5 rounded-cell px-2.5 text-[14.5px] font-[550] transition-colors";
 const ROW_IDLE = "text-ink-2 hover:bg-rail-hover hover:text-ink";
+const ROW_CURRENT = "bg-card-paper text-ink shadow-item";
+
+function views(counts: RailCounts): ViewRow[] {
+  return [
+    {
+      key: "today",
+      href: "/",
+      label: "Today",
+      icon: CalendarCheck,
+      count: counts.due,
+      alarming: true,
+    },
+    {
+      key: "upcoming",
+      href: "/upcoming",
+      label: "Upcoming",
+      icon: CalendarDays,
+      count: counts.upcoming,
+    },
+    { key: "inbox", href: "/inbox", label: "Inbox", icon: Inbox, count: counts.inbox },
+    {
+      key: "completed",
+      href: "/completed",
+      label: "Completed",
+      icon: SquareCheck,
+      count: counts.completed,
+    },
+  ];
+}
 
 function SectionHeading({ title, action }: { title: string; action: string }) {
   return (
@@ -52,38 +87,13 @@ function SectionHeading({ title, action }: { title: string; action: string }) {
   );
 }
 
-export function Rail({
-  lists,
-  labels,
-  counts,
-}: {
-  lists: List[];
-  labels: Label[];
-  counts: { overdueAndToday: number; inbox: number };
-}) {
-  const active = lists.filter((l) => !l.isArchived);
-  const archivedCount = lists.length - active.length;
-
-  const views: ViewRow[] = [
-    {
-      key: "today",
-      label: "Today",
-      icon: CalendarCheck,
-      count: counts.overdueAndToday,
-      alarming: true,
-    },
-    { key: "upcoming", label: "Upcoming", icon: CalendarDays },
-    { key: "inbox", label: "Inbox", icon: Inbox, count: counts.inbox },
-    { key: "completed", label: "Completed", icon: SquareCheck },
-  ];
-
+function Frame({ children }: { children: React.ReactNode }) {
   return (
     <nav
       aria-label="Views and lists"
       className="w-rail border-rail-line bg-rail hidden shrink-0 flex-col overflow-y-auto border-r p-3 md:flex"
     >
       <Brand />
-
       <button
         type="button"
         className="rounded-cell border-hair bg-card-paper text-ink-3 hover:border-field-edge mb-1 flex h-9 items-center gap-2 border px-2.5 text-[14px] transition-colors"
@@ -92,26 +102,72 @@ export function Rail({
         <span className="flex-1 text-left">Search</span>
         <kbd className="border-hair text-ink-3 rounded border px-1.5 font-sans text-[11px]">/</kbd>
       </button>
+      {children}
+    </nav>
+  );
+}
 
+/**
+ * The rail with no data yet: the view rows are still navigable, which is the
+ * point — the shell is usable before any query resolves.
+ */
+export function RailFallback({ current }: { current: ViewKey }) {
+  return (
+    <Frame>
       <ul className="flex list-none flex-col gap-px">
-        {views.map((view) => {
-          const current = view.key === "today";
+        {views({ due: 0, inbox: 0, upcoming: 0, completed: 0 }).map((view) => (
+          <li key={view.key}>
+            <Link
+              href={view.href}
+              aria-current={view.key === current ? "page" : undefined}
+              className={`${ROW} ${view.key === current ? ROW_CURRENT : ROW_IDLE}`}
+            >
+              <view.icon className="text-ink-3 size-4 flex-none" strokeWidth={1.9} />
+              <span className="flex-1 truncate">{view.label}</span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+    </Frame>
+  );
+}
+
+export function Rail({
+  current,
+  lists,
+  labels,
+  counts,
+}: {
+  current: ViewKey;
+  lists: List[];
+  labels: Label[];
+  counts: RailCounts;
+}) {
+  const active = lists.filter((l) => !l.isArchived);
+  const archivedCount = lists.length - active.length;
+
+  return (
+    <Frame>
+      <ul className="flex list-none flex-col gap-px">
+        {views(counts).map((view) => {
+          const isCurrent = view.key === current;
           return (
             <li key={view.key}>
-              <div
-                aria-current={current ? "page" : undefined}
-                className={`${ROW} ${current ? "bg-card-paper text-ink shadow-item" : ROW_IDLE}`}
+              <Link
+                href={view.href}
+                aria-current={isCurrent ? "page" : undefined}
+                className={`${ROW} ${isCurrent ? ROW_CURRENT : ROW_IDLE}`}
               >
                 <view.icon className="text-ink-3 size-4 flex-none" strokeWidth={1.9} />
                 <span className="flex-1 truncate">{view.label}</span>
-                {view.count !== undefined && (
+                {view.count !== undefined && view.count > 0 && (
                   <span
-                    className={`text-[13px] ${view.alarming && view.count > 0 ? "text-verm font-bold" : "text-ink-3"}`}
+                    className={`text-[13px] ${view.alarming ? "text-verm font-bold" : "text-ink-3"}`}
                   >
                     {view.count}
                   </span>
                 )}
-              </div>
+              </Link>
             </li>
           );
         })}
@@ -162,6 +218,6 @@ export function Rail({
       {/* The prototype's sync indicator sits here. It has no equivalent in this
           architecture; M7 puts the account and sign-in affordance in this slot. */}
       <div className="mt-auto pt-6" />
-    </nav>
+    </Frame>
   );
 }

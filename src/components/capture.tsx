@@ -5,6 +5,7 @@ import { Plus, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { attempt } from "@/lib/actions/attempt";
+import { usePendingWriteGuard } from "@/lib/use-pending-write";
 import { createTasks } from "@/lib/actions/task";
 import { parseCapture, type Chip, type Chrono } from "@/lib/parse";
 import type { NewTask } from "@/lib/schemas";
@@ -24,11 +25,40 @@ const CHIP_TONE: Record<Chip["kind"], string> = {
   priority: "bg-marigold-tint text-marigold-ink",
 };
 
-export function Capture({ today }: { today: string }) {
+/** How long a submit will wait for the parser before saving without it. */
+const PARSER_DEADLINE_MS = 2000;
+
+async function raceParser(load: Promise<Chrono>): Promise<Chrono | undefined> {
+  try {
+    return await Promise.race([
+      load,
+      new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), PARSER_DEADLINE_MS)),
+    ]);
+  } catch {
+    return undefined;
+  }
+}
+
+export function Capture({
+  today,
+  defaultDueDate,
+}: {
+  /** The user's calendar date. Only a reference for chip labels. */
+  today: string;
+  /**
+   * What an unparsed task gets. The current view's day, so a new task lands
+   * where you are looking — or null in Inbox, which is for undated work.
+   */
+  defaultDueDate: string | null;
+}) {
   const [value, setValue] = useState("");
   const [dismissed, setDismissed] = useState<ReadonlySet<string>>(new Set());
   const [pending, startTransition] = useTransition();
   const input = useRef<HTMLInputElement>(null);
+
+  // The box clears before the task is saved, so there is nothing on screen to
+  // tell the user a write is still in flight.
+  usePendingWriteGuard(pending);
 
   /**
    * `chrono` is the heaviest dependency in the project and most page views never
@@ -41,12 +71,14 @@ export function Capture({ today }: { today: string }) {
    * on every character only to hit its own guard.
    */
   const [chrono, setChrono] = useState<Chrono>();
-  const loading = useRef(false);
+  const loadingChrono = useRef<Promise<Chrono>>(undefined);
 
-  function loadChrono() {
-    if (loading.current) return;
-    loading.current = true;
-    import("chrono-node").then(setChrono);
+  function loadChrono(): Promise<Chrono> {
+    loadingChrono.current ??= import("chrono-node").then((m) => {
+      setChrono(m);
+      return m;
+    });
+    return loadingChrono.current;
   }
 
   // Press N from anywhere to start typing.
@@ -80,18 +112,32 @@ export function Capture({ today }: { today: string }) {
     setDismissed(new Set());
   }
 
-  function submit() {
+  async function submit() {
     if (lines.length === 0) return;
 
+    // Wait for the parser if it has not landed yet. The preview must never
+    // block, but submitting must: typing "pay rent friday" and hitting Enter
+    // within the import's few hundred milliseconds would otherwise silently
+    // skip the date and file it under today.
+    //
+    // If the import fails outright, save anyway with the text as written. The
+    // parser is an enhancement; losing the task because a chunk failed to fetch
+    // would be far worse than filing it undated.
+    // Bounded on purpose. Waiting for the parser stops a fast typist losing
+    // "friday"; waiting *indefinitely* would mean a slow or failed chunk fetch
+    // blocks saving altogether, which is far worse. Past the deadline the task
+    // is saved as written — undated rather than lost.
+    const parser = chrono ?? (await raceParser(loadChrono()));
+
     const tasks: NewTask[] = lines.map((line) => {
-      const parsed = parseCapture(line, { today, chrono, dismissed });
+      const parsed = parseCapture(line, { today, chrono: parser, dismissed });
       return {
         // A line that was *entirely* tokens still needs a title; fall back to
         // the raw line rather than saving an empty task.
         title: parsed.title || line.trim(),
-        // Undated capture on Today lands on Today, so it appears in the view
-        // you are looking at rather than silently in Inbox.
-        dueDate: parsed.dueDate ?? today,
+        // Falls back to the view's own day, so a new task appears where you are
+        // looking rather than silently somewhere else.
+        dueDate: parsed.dueDate ?? defaultDueDate,
         dueTime: parsed.dueTime,
         priority: parsed.priority,
       };
@@ -134,7 +180,7 @@ export function Capture({ today }: { today: string }) {
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
-                submit();
+                void submit();
               }
               if (e.key === "Escape") reset();
             }}

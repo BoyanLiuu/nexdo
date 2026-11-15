@@ -14,6 +14,19 @@ import {
 import * as taskService from "@/lib/server/task-service";
 
 /**
+ * Invalidate every view, not just the one the user is looking at.
+ *
+ * `revalidatePath("/")` only invalidates the Today route, so adding a task
+ * dated Friday and then clicking Upcoming served a cached payload that predated
+ * it. Any task mutation can change what Today, Upcoming, Inbox and Completed
+ * each show — and all four counts in the rail — so the whole tree under the root
+ * layout goes.
+ */
+function revalidateViews() {
+  revalidatePath("/", "layout");
+}
+
+/**
  * Every action does the same four things in the same order:
  *
  *   1. Zod-parse the input            — is the shape valid?
@@ -64,7 +77,7 @@ export async function createTasks(input: unknown): Promise<ActionResult> {
 
   await taskService.createTasks(principal, tasks);
 
-  revalidatePath("/");
+  revalidateViews();
   return ok();
 }
 
@@ -73,7 +86,7 @@ export async function completeTask(input: unknown): Promise<ActionResult> {
   if ("error" in auth) return fail(auth.error);
 
   await taskService.completeTask(auth.principal, auth.id);
-  revalidatePath("/");
+  revalidateViews();
   return ok();
 }
 
@@ -82,7 +95,7 @@ export async function uncompleteTask(input: unknown): Promise<ActionResult> {
   if ("error" in auth) return fail(auth.error);
 
   await taskService.uncompleteTask(auth.principal, auth.id);
-  revalidatePath("/");
+  revalidateViews();
   return ok();
 }
 
@@ -91,7 +104,7 @@ export async function deleteTask(input: unknown): Promise<ActionResult> {
   if ("error" in auth) return fail(auth.error);
 
   await taskService.deleteTask(auth.principal, auth.id);
-  revalidatePath("/");
+  revalidateViews();
   return ok();
 }
 
@@ -106,6 +119,6 @@ export async function renameTask(input: unknown): Promise<ActionResult> {
   assertCan(principal, "task:update");
 
   await taskService.renameTask(principal, parsed.data.id, parsed.data.title);
-  revalidatePath("/");
+  revalidateViews();
   return ok();
 }

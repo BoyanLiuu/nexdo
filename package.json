@@ -15,8 +15,9 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "analyze": "ANALYZE=true next build",
-    "check": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test",
-    "postinstall": "prisma generate"
+    "check": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test:tz",
+    "postinstall": "prisma generate",
+    "test:tz": "for tz in Asia/Tokyo America/Los_Angeles UTC Pacific/Kiritimati; do echo \"--- TZ=$tz\"; TZ=$tz vitest run || exit 1; done"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.1",

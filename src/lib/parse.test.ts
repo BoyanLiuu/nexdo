@@ -162,15 +162,6 @@ describe("dismissing a chip", () => {
   });
 });
 
-describe("without chrono loaded", () => {
-  it("still parses priority, so the first keystroke is never dead", () => {
-    const r = parseCapture("urgent thing p1", { today: TODAY, now: NOW });
-    expect(r.priority).toBe(1);
-    expect(r.title).toBe("urgent thing");
-    expect(r.dueDate).toBeNull();
-  });
-});
-
 describe("chip order", () => {
   it("reads left to right, matching the typed text", () => {
     // "friday" comes before "p1" in the text, so its chip comes first — even
@@ -192,3 +183,20 @@ describe("chip order", () => {
  * one formatter, in dates.ts, which builds both sides the same way. M3's
  * TZ-parameterised suite is where this gets covered systematically.
  */
+
+describe("before chrono has loaded", () => {
+  /**
+   * The capture box imports chrono on the first keystroke, so a fast typist can
+   * press Enter before it resolves. Submitting in that window used to drop the
+   * date silently and file the task under today; submit now waits for the
+   * parser, with a deadline. This pins the degraded behaviour it waits past:
+   * priority still works, and an unparsed date stays in the title rather than
+   * being guessed at.
+   */
+  it("parses priority but leaves date text alone", () => {
+    const r = parseCapture("pay rent friday p1", { today: TODAY, now: NOW });
+    expect(r.priority).toBe(1);
+    expect(r.dueDate).toBeNull();
+    expect(r.title).toBe("pay rent friday");
+  });
+});
