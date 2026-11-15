@@ -2,8 +2,7 @@
 
 _Focus on what's next._
 
-Progress tracker for the build. The plan and architecture live in
-`../docs/project-idea/33-todo-list/`; this file records what has actually landed.
+Progress tracker for the build: what has actually landed, and the decisions made along the way.
 
 **Last verified:** 2026-11-14 — M0 complete, `pnpm check` and `pnpm test:e2e` green.
 

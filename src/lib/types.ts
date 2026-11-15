@@ -1,7 +1,6 @@
 /**
- * Field names and types mirror the Prisma schema in
- * docs/project-idea/33-todo-list/ARCHITECTURE.md §6, so M1 can swap the
- * fixtures import for a service call without reshaping components.
+ * Field names and types mirror the planned Prisma schema exactly, so M1 can swap
+ * the fixtures import for a service call without reshaping any component.
  */
 
 export type ListColour =
@@ -31,7 +30,10 @@ export type Task = {
   parentId: string | null;
   title: string;
   notes: string;
-  /** ISO calendar date, `YYYY-MM-DD`. Never a timestamp — see ARCHITECTURE.md §7. */
+  /**
+   * ISO calendar date, `YYYY-MM-DD`. Never a timestamp: a timestamp makes a task
+   * overdue at UTC midnight for anyone east of London.
+   */
   dueDate: string | null;
   /** `HH:MM`, 24-hour. */
   dueTime: string | null;

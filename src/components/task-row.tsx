@@ -20,7 +20,7 @@ function PriorityFlag({ priority }: { priority: Priority }) {
   );
 }
 
-/** Native checkbox styled as the design's `.tick`. No handler in M0 — see IMPLEMENTATION_PLAN.md. */
+/** Native checkbox styled as the design's `.tick`. No handler in M0 — see MILESTONES.md. */
 function Tick({ done, label }: { done: boolean; label: string }) {
   return (
     <input

@@ -5,7 +5,7 @@ import type { Label, List, Task } from "@/lib/types";
  * replaces the import with a `taskService` call.
  *
  * Deliberately NOT a store: no localStorage, no reducer, no mutation. See the
- * M0 guardrails in IMPLEMENTATION_PLAN.md — a local store here would turn M1's
+ * M0 guardrails in MILESTONES.md — a local store here would turn M1's
  * one-line swap into a rewrite of the view tree.
  *
  * Dates are offsets from the current local day so the Overdue / Today /

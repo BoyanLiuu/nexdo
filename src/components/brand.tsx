@@ -1,6 +1,6 @@
 /**
  * The Nexdo mark: a queue of seven, with the next one standing up.
- * Mirrors `.brand-mark` in impeccable/index-hallmark.html.
+ * Mirrors the design prototype's `.brand-mark`.
  */
 export function BrandMark({ className = "" }: { className?: string }) {
   return (

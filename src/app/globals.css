@@ -43,8 +43,8 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-/* Nexdo palette, ported from impeccable/index-hallmark.html.
-   Hex rather than oklch so values diff directly against the prototype. */
+/* Nexdo palette, ported from the design prototype.
+   Hex rather than oklch so values diff directly against it. */
 @theme {
   --color-ground: #fcfcfb;
   --color-card-paper: #ffffff;

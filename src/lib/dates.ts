@@ -1,10 +1,11 @@
 /**
  * Provisional date helpers for M0 presentation only.
  *
- * These read the machine's local zone. M3 replaces them with zone-aware
- * versions that take the owner's IANA zone as an argument, because the server
- * renders these views and must not use its own clock — see ARCHITECTURE.md §7.
- * Until then, do not rely on these being correct for anyone but you.
+ * These read the machine's local zone. M3 replaces them with zone-aware versions
+ * that take the user's IANA zone as an argument, because the server renders
+ * these views and must not use its own clock — otherwise the date boundary moves
+ * with the deploy region. Until then, do not rely on these being correct for
+ * anyone but you.
  */
 
 /** Local calendar date as `YYYY-MM-DD`. */
