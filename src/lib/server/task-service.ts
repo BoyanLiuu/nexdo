@@ -3,6 +3,8 @@ import { prisma } from "@/lib/server/prisma";
 
 /** Upcoming shows a week, starting the day after today. */
 export const UPCOMING_DAYS = 7;
+import { createId } from "@paralleldrive/cuid2";
+
 import { Prisma } from "@/generated/prisma/client";
 import { addDays, todayIn } from "@/lib/dates";
 import { positionAfter } from "@/lib/ordering";
@@ -222,41 +224,37 @@ export async function createTasks(principal: OwnedPrincipal, inputs: NewTask[]):
   const listOk = new Set(ownedLists.map((l) => l.id));
   const labelOk = new Set(ownedLabels.map((l) => l.id));
 
-  // One statement for the whole paste. `position` is derived from a single base
-  // so a pasted block keeps the order it was written in.
+  // Every row gets an id before anything is written: the client sends one so
+  // its optimistic row and this row are the same row, and anything arriving
+  // without one gets the same treatment here rather than a second code path.
   const base = Date.now();
-  const { count } = await prisma.task.createMany({
-    data: inputs.map((input, i) => ({
-      ownerId: principal.ownerId,
-      title: input.title,
-      dueDate: input.dueDate ?? null,
-      dueTime: input.dueTime ?? null,
-      priority: input.priority,
-      listId: input.listId && listOk.has(input.listId) ? input.listId : null,
-      position: (base + i).toString(36),
-    })),
-  });
-  // createMany cannot write the join rows, so labels need a second pass. Only
-  // relevant when a `@label` token was used.
-  const withLabels = inputs.filter((i) => (i.labelIds ?? []).some((id) => labelOk.has(id)));
-  if (withLabels.length > 0) {
-    const created = await prisma.task.findMany({
-      where: { ownerId: principal.ownerId, title: { in: withLabels.map((i) => i.title) } },
-      orderBy: { position: "desc" },
-      take: withLabels.length,
-      select: { id: true, title: true },
-    });
-    const idByTitle = new Map(created.map((t) => [t.title, t.id]));
-    const joins = withLabels.flatMap((i) => {
-      const taskId = idByTitle.get(i.title);
-      if (!taskId) return [];
-      return (i.labelIds ?? [])
-        .filter((id) => labelOk.has(id))
-        .map((labelId) => ({ taskId, labelId }));
-    });
-    if (joins.length > 0) {
-      await prisma.taskLabel.createMany({ data: joins, skipDuplicates: true });
-    }
+  const rows = inputs.map((input, i) => ({
+    id: input.id ?? createId(),
+    ownerId: principal.ownerId,
+    title: input.title,
+    dueDate: input.dueDate ?? null,
+    dueTime: input.dueTime ?? null,
+    priority: input.priority,
+    listId: input.listId && listOk.has(input.listId) ? input.listId : null,
+    // A pasted block keeps the order it was written in, whether the keys come
+    // from the client or from this single base.
+    position: input.position ?? (base + i).toString(36),
+  }));
+
+  // One statement for the whole paste.
+  const { count } = await prisma.task.createMany({ data: rows });
+
+  // `createMany` cannot write join rows, so labels need a second statement —
+  // but no longer a second *query*. This used to read the tasks back and match
+  // them up by title, which cost a round trip and attached labels to the wrong
+  // task whenever two tasks shared a title.
+  const joins = rows.flatMap((row, i) =>
+    (inputs[i].labelIds ?? [])
+      .filter((labelId) => labelOk.has(labelId))
+      .map((labelId) => ({ taskId: row.id, labelId })),
+  );
+  if (joins.length > 0) {
+    await prisma.taskLabel.createMany({ data: joins, skipDuplicates: true });
   }
 
   await touch(principal);

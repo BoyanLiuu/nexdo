@@ -38,6 +38,18 @@ export const priority = z.union([z.literal(1), z.literal(2), z.literal(3), z.lit
 
 /** One task as the capture box parsed it. */
 export const newTaskSchema = z.object({
+  /**
+   * Minted by the client so the optimistic row and the stored row are the same
+   * row. `@default(cuid())` is only a default; supplying one lets the UI act on
+   * a task — complete it, open it, delete it — before the insert has landed,
+   * which is impossible if the id arrives afterwards.
+   *
+   * Safe to accept: authorization is the `ownerId` filter, so a chosen id grants
+   * nothing. A collision fails the insert, which surfaces as an error.
+   */
+  id: taskId.optional(),
+  /** Minted client-side too, so the optimistic row sorts where the real one will. */
+  position: z.string().min(1).max(200).optional(),
   title: z.string().trim().min(1, "a task needs a title").max(500),
   dueDate: isoDate.nullish(),
   dueTime: isoTime.nullish(),

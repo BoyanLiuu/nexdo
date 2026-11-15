@@ -78,11 +78,19 @@ async function openWithKey(page: Page, key: string, dialog: Locator) {
 async function capture(page: Page, title: string) {
   const input = page.getByRole("textbox", { name: "Add a task" });
   await type(input, title);
+
+  // The response wait is required again. It was dropped in M4 as redundant,
+  // because without an optimistic insert the row could only appear after the
+  // server had written it — so the row appearing *was* proof of the write. The
+  // optimistic insert removed that proof: the row now appears in ~20ms from the
+  // client's own data, and any test that reloads or navigates next would cancel
+  // the write in flight and then fail looking for a task that was never stored.
+  const written = page.waitForResponse(
+    (r) => r.request().method() === "POST" && r.url().includes("127.0.0.1"),
+  );
   await input.press("Enter");
-  // No response wait needed: there is no optimistic insert, so the row only
-  // appears once the server has written it and revalidated. Waiting on the POST
-  // as well was redundant — and was the source of a mobile flake.
   await expect(taskRow(page, title)).toBeVisible();
+  await written;
   return input;
 }
 
@@ -566,4 +574,66 @@ test("arrow keys do not take over the page when no row is focused", async ({ pag
   // which the first version of the roving tabindex made impossible: with no
   // cursor every row was `tabindex="-1"` and the list was unreachable.
   await expect(page.locator("[data-task-row][tabindex='0']")).toHaveCount(1);
+});
+
+test("a captured task appears before the server has stored it", async ({ page }) => {
+  await page.goto("/");
+
+  // One throwaway capture first, to load the parser. `submit()` waits for
+  // `chrono` before it inserts anything, so on a cold start that import — not
+  // the database — is what the budget below would be measuring.
+  await capture(page, unique());
+
+  const title = unique();
+  const input = page.getByRole("textbox", { name: "Add a task" });
+  await type(input, title);
+
+  const written = page.waitForResponse(
+    (r) => r.request().method() === "POST" && r.url().includes("127.0.0.1"),
+  );
+  await input.press("Enter");
+
+  // Drawn from the client's own data. A one-second budget against a database
+  // round trip that measures ~700ms locally: if this ever starts needing the
+  // full trip, the optimistic path has broken.
+  await expect(taskRow(page, title)).toBeVisible({ timeout: 1000 });
+
+  await written;
+  // Exactly one row once the server payload has replaced the optimistic one.
+  // Two would mean the ids did not match, which is the whole point of minting
+  // the id on the client.
+  await expect(taskRow(page, title)).toHaveCount(1);
+
+  await page.reload();
+  await expect(taskRow(page, title)).toBeVisible();
+});
+
+test("a task can be completed before its insert has landed", async ({ page }) => {
+  await page.goto("/");
+  await capture(page, unique()); // warms the parser, as above
+
+  // Both writes have to be allowed to finish: reloading or navigating inside
+  // that window cancels them, which is the race `usePendingWriteGuard` warns a
+  // real user about and which a test has to wait out rather than trigger.
+  let posts = 0;
+  page.on("response", (r) => {
+    if (r.request().method() === "POST") posts += 1;
+  });
+
+  const title = unique();
+  const input = page.getByRole("textbox", { name: "Add a task" });
+  await type(input, title);
+  await input.press("Enter");
+
+  // Act on the optimistic row immediately. This is the case that forces the id
+  // to be minted client-side: with a server-generated id there is nothing to
+  // address yet, so the completion would target a task that does not exist.
+  await expect(taskRow(page, title)).toBeVisible({ timeout: 1000 });
+  await page.getByRole("checkbox", { name: `Complete ${title}` }).click();
+  await expect(taskRow(page, title)).toBeHidden();
+
+  await expect.poll(() => posts, { timeout: 15_000 }).toBeGreaterThanOrEqual(2);
+
+  await page.goto("/completed");
+  await expect(taskRow(page, title)).toBeVisible();
 });

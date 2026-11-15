@@ -575,10 +575,72 @@ Five more, from re-reading the diff rather than recalling it. The first was a us
 
 ---
 
+## Post-M6 — optimistic creates
+
+Not a planned milestone; it came from noticing that adding a task felt slow while completing one did
+not. Measured before changing anything: complete repainted in **8ms**, create took **~750ms**.
+
+- [x] The capture box moved inside the component that owns the task array, which is now `TaskBoard`
+      rather than `TaskList` — it renders the box, the detail panel and the rows
+- [x] An `insert` action on the optimistic reducer
+- [x] Ids and sort keys minted client-side (`@paralleldrive/cuid2`) and sent with the create
+- [x] `createTasks` honours a supplied id, and the label join no longer reads the tasks back
+- [x] Prisma's connection pool capped, which was breaking every run of dev + e2e together
+- [x] Two e2e tests: the row appears without the round trip, and a task can be completed before its
+      insert lands
+- [x] **~750ms → ~20ms**, verified in a browser
+
+### Decisions log
+
+- **The blocker was composition, not logic.** `useOptimistic` lives with the task array; the capture
+  box was a _sibling_ under `ViewBody`, a Server Component that can hold no state. There was nowhere
+  to put the new row. Moving the box inside the owner was the whole fix structurally.
+- **The client mints the id, and that is the load-bearing part.** `@default(cuid())` is only a
+  default. Drawing an optimistic row is easy; being able to _act_ on it is not — tick the new task
+  14ms later and the completion needs a real id to address. A server-generated id would mean a
+  placeholder and a reconciliation pass on every follow-up action. Safe because authorization is the
+  `ownerId` filter, so a chosen id grants nothing, and a collision just fails the insert.
+- **The client mints the position too**, so the optimistic row sorts where the real one will and does
+  not jump when the server payload replaces it.
+- **Which views show it is still decided by the client's own grouping.** A task dated Friday captured
+  on Today is inserted into the array and correctly filtered out by `groupsFor` — no special case.
+
+### Bugs this found
+
+- **The label join matched tasks by title.** It read the new tasks back with
+  `where: { title: { in: [...] } }` and mapped titles to ids — a wasted round trip that attached
+  labels to the wrong task whenever two tasks shared a title. Gone: the ids are known before the
+  insert.
+- **The connection pool was unbounded per process, and there is more than one process.** `PrismaPg`
+  had no `max`, so `pg` used its default of 10, against a Supabase pooler that allows 15 for the whole
+  project. Capping it at 6 did _not_ fix it: Next runs several render workers, each with its own pool,
+  so the constraint is `workers x max < 15`. Default is now 3, overridable with
+  `DATABASE_POOL_MAX`. This is what the earlier "17 unrelated e2e failures" were, and almost
+  certainly what the "rare mobile flake" recorded since M3 was as well — a full suite run with a dev
+  server alongside now reports **41 passed, 1 flaky, 0 connection errors**, which had never held
+  before.
+- **A test-helper assumption flipped back.** M4 removed the write-wait from `capture()` because
+  without an optimistic insert the row could only appear after the server had written it, so the row
+  was proof of the write. That is no longer true, and tests that reloaded next were cancelling the
+  write and then failing to find the task.
+
+### Known gaps
+
+- The window where the UI reports success before the write lands grew from ~200ms to ~700ms for
+  creates. `beforeunload` still guards it, but it is a wider window than when that guard was written.
+- Rail operations — create list, create label, rename, archive — are still non-optimistic. Same shape
+  as this change, different component.
+
+---
+
 ## Conventions
 
 - `pnpm check` = typecheck + lint + format check + unit tests. Green before every milestone commit.
 - `pnpm test:e2e` runs Chromium and WebKit; WebKit matters because the brief requires iOS Safari.
+- **Stop the dev server before running e2e.** Locally both connect through Supabase's _session_
+  pooler, which allows 15 clients; six Playwright workers plus a dev server exceed it and every query
+  fails with `(EMAXCONNSESSION) max clients reached in session mode`. It surfaces as a wave of
+  unrelated "element not found" failures, which reads like an app regression and is not one.
 - Dev binds `127.0.0.1:3033`; Playwright builds and serves on `127.0.0.1:3133`.
 - `pnpm dev:utc` runs the server in UTC while the browser reports its real zone — the only way to
   reproduce the production time-zone mismatch locally before M8.

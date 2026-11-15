@@ -3,12 +3,14 @@
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { Plus, X } from "lucide-react";
 import { toast } from "sonner";
+import { createId } from "@paralleldrive/cuid2";
 
 import { attempt } from "@/lib/actions/attempt";
 import { usePendingWriteGuard } from "@/lib/use-pending-write";
 import { createTasks } from "@/lib/actions/task";
 import { parseCapture, type Chip, type Chrono } from "@/lib/parse";
 import type { NewTask } from "@/lib/schemas";
+import type { Priority, Task } from "@/lib/types";
 import { isTypingTarget } from "@/lib/shortcuts";
 
 /**
@@ -42,12 +44,36 @@ async function raceParser(load: Promise<Chrono>): Promise<Chrono | undefined> {
   }
 }
 
+/**
+ * A `NewTask` as the list will render it. The fields the capture box does not
+ * collect are not guesses — a new task has no parent, no notes and is not
+ * complete, which is exactly what the server will store.
+ */
+function toOptimisticTask(input: NewTask & { id: string; position: string }): Task {
+  return {
+    id: input.id,
+    position: input.position,
+    title: input.title,
+    listId: input.listId ?? null,
+    parentId: null,
+    notes: "",
+    dueDate: input.dueDate ?? null,
+    dueTime: input.dueTime ?? null,
+    priority: (input.priority ?? 4) as Priority,
+    labelIds: input.labelIds ?? [],
+    completedAt: null,
+    repeat: null,
+    seriesId: null,
+  };
+}
+
 export function Capture({
   today,
   defaultDueDate,
   lists = [],
   labels = [],
   defaultListId = null,
+  onCreate,
 }: {
   /** The user's calendar date. Only a reference for chip labels. */
   today: string;
@@ -61,6 +87,12 @@ export function Capture({
   labels?: readonly { id: string; name: string }[];
   /** A list view files new tasks into itself unless the text says otherwise. */
   defaultListId?: string | null;
+  /**
+   * Hands the parsed tasks to whoever owns the task array, so they can be drawn
+   * before the insert lands. Called inside this component's transition, which
+   * is what keeps the optimistic rows alive until the action settles.
+   */
+  onCreate?: (tasks: Task[]) => void;
 }) {
   const [value, setValue] = useState("");
   const [dismissed, setDismissed] = useState<ReadonlySet<string>>(new Set());
@@ -141,9 +173,17 @@ export function Capture({
     // is saved as written — undated rather than lost.
     const parser = chrono ?? (await raceParser(loadChrono()));
 
-    const tasks: NewTask[] = lines.map((line) => {
+    // Ids and sort keys are minted here, not by the server. That is what lets
+    // the row be drawn immediately and still be the same row the database gets:
+    // the task can be completed, opened or deleted before the insert lands,
+    // because its id is already final.
+    const base = Date.now();
+    const tasks: (NewTask & { id: string; position: string })[] = lines.map((line, i) => {
       const parsed = parseCapture(line, { today, chrono: parser, dismissed, lists, labels });
       return {
+        id: createId(),
+        // Derived from one base so a pasted block keeps the order it was typed.
+        position: (base + i).toString(36),
         // A line that was *entirely* tokens still needs a title; fall back to
         // the raw line rather than saving an empty task.
         title: parsed.title || line.trim(),
@@ -163,6 +203,10 @@ export function Capture({
     input.current?.focus();
 
     startTransition(async () => {
+      // Inside the transition and before the await, so React holds these rows
+      // until the action settles and then replaces them with the server's.
+      onCreate?.(tasks.map(toOptimisticTask));
+
       const outcome = await attempt(
         () => createTasks({ tasks, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone }),
         "Could not add that task.",

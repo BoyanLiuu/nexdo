@@ -1,8 +1,7 @@
 import type { ReactNode } from "react";
 
-import { Capture } from "@/components/capture";
 import { SortControl } from "@/components/sort-control";
-import { TaskList } from "@/components/task-list";
+import { TaskBoard } from "@/components/task-board";
 import { userToday } from "@/components/view-data";
 import { ViewSubtitle } from "@/components/view-shell";
 import type { ViewKey } from "@/components/rail";
@@ -104,21 +103,7 @@ export async function ViewBody({
         {view !== "completed" && <SortControl value={sort} />}
       </ViewSubtitle>
 
-      {/* Capture dates new tasks for the view you are looking at, so they land
-          where you can see them. Completed is a record, not a place to add to. */}
-      {view !== "completed" && (
-        <Capture
-          today={now}
-          defaultDueDate={view === "upcoming" ? addDays(now, 1) : view === "today" ? now : null}
-          lists={chrome.lists}
-          labels={chrome.labels}
-          // A list view files new tasks into itself, so capture there behaves
-          // like the view you are looking at.
-          defaultListId={view === "list" ? (targetId ?? null) : null}
-        />
-      )}
-
-      <TaskList
+      <TaskBoard
         view={view}
         tasks={data.tasks}
         subtasks={data.subtasks}
@@ -131,6 +116,19 @@ export async function ViewBody({
         // order across them; Completed is a record. Both stay undraggable.
         sortable={view === "today" || view === "inbox" || view === "list" || view === "label"}
         empty={empty}
+        // Capture dates new tasks for the view you are looking at, so they land
+        // where you can see them. Completed is a record, not a place to add to —
+        // and `TaskBoard` renders the box itself because it owns the array a new
+        // task has to be inserted into.
+        capture={
+          view === "completed"
+            ? null
+            : {
+                defaultDueDate:
+                  view === "upcoming" ? addDays(now, 1) : view === "today" ? now : null,
+                defaultListId: view === "list" ? (targetId ?? null) : null,
+              }
+        }
       />
     </>
   );

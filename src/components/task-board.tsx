@@ -3,6 +3,7 @@
 import { useOptimistic, useState, useTransition } from "react";
 import { toast } from "sonner";
 
+import { Capture } from "@/components/capture";
 import { SortableRows } from "@/components/sortable-rows";
 import { TaskDetail } from "@/components/task-detail";
 import { TaskGroup } from "@/components/task-group";
@@ -25,6 +26,13 @@ import type { Label, List, Task } from "@/lib/types";
  * Anything that changes *which* rows are shown has to be applied where the list
  * is owned.
  *
+ * The capture box is rendered here, not beside this component, for the same
+ * reason. It was previously a sibling under `ViewBody` — a Server Component,
+ * which can hold no state — so the component that knew a task had been created
+ * and the component that owned the task array had nowhere to meet, and creating
+ * a task was the one mutation that could not be optimistic. It waited roughly
+ * 700ms for a round trip while completing one took 8ms.
+ *
  * Grouping also happens here rather than on the server, so an optimistic change
  * re-groups immediately: tick the last task of a day and that day's heading goes
  * with it.
@@ -33,6 +41,8 @@ import type { Label, List, Task } from "@/lib/types";
 type Action =
   /** Both complete and uncomplete remove the row: Today shows open tasks and
    *  Completed shows done ones, so either transition leaves the current view. */
+  /** A created task, drawn before the insert has landed. */
+  | { type: "insert"; tasks: Task[] }
   | { type: "remove"; id: string }
   | { type: "restore"; task: Task }
   | { type: "rename"; id: string; title: string }
@@ -40,6 +50,12 @@ type Action =
 
 function reduce(tasks: Task[], action: Action): Task[] {
   switch (action.type) {
+    case "insert":
+      // Appended and re-sorted by key, so a new task lands where its position
+      // puts it rather than always at the bottom. `groupsFor` then decides
+      // whether this view shows it at all — a task dated Friday captured on
+      // Today is inserted here and correctly filtered out of the view.
+      return [...tasks, ...action.tasks].sort((a, b) => (a.position < b.position ? -1 : 1));
     case "remove":
       return tasks.filter((t) => t.id !== action.id);
     case "restore":
@@ -86,7 +102,7 @@ function groupsFor(view: ViewKey, tasks: Task[], now: string, upcomingDays: numb
   }
 }
 
-export function TaskList({
+export function TaskBoard({
   view,
   tasks,
   subtasks,
@@ -97,6 +113,7 @@ export function TaskList({
   sort,
   sortable = false,
   empty,
+  capture,
 }: {
   view: ViewKey;
   tasks: Task[];
@@ -111,6 +128,12 @@ export function TaskList({
   sortable?: boolean;
   /** Shown when the view has nothing in it at all. Written per view. */
   empty: React.ReactNode;
+  /**
+   * Capture's view-dependent defaults, or null where there is nothing to add to
+   * (Completed is a record). Passed as values rather than as a ready-made
+   * element because capture needs the insert callback this component owns.
+   */
+  capture: { defaultDueDate: string | null; defaultListId: string | null } | null;
 }) {
   const [optimistic, apply] = useOptimistic(tasks, reduce);
   const [pending, startTransition] = useTransition();
@@ -249,12 +272,33 @@ export function TaskList({
     onReorder: reorderable ? onKeyboardReorder : null,
   });
 
-  if (optimistic.length === 0) return <>{empty}</>;
+  const captureBox = capture && (
+    <Capture
+      today={now}
+      defaultDueDate={capture.defaultDueDate}
+      defaultListId={capture.defaultListId}
+      lists={lists}
+      labels={labels}
+      onCreate={(created) => apply({ type: "insert", tasks: created })}
+    />
+  );
+
+  // Rendered before the early return, or an empty view would have no way to add
+  // the first task.
+  if (optimistic.length === 0)
+    return (
+      <>
+        {captureBox}
+        {empty}
+      </>
+    );
 
   const detailTask = detailId ? optimistic.find((t) => t.id === detailId) : undefined;
 
   return (
     <>
+      {captureBox}
+
       {detailTask && (
         <TaskDetail
           key={detailTask.id}
