@@ -52,6 +52,29 @@ async function mutate(page: Page, act: () => Promise<void>) {
   // auto-wait for the UI to catch up.
 }
 
+/**
+ * The row the keyboard cursor is on — defined by real DOM focus, not by
+ * `tabindex`. Exactly one row carries `tabindex="0"` at all times so the list
+ * is reachable by Tab, which means `tabindex` says "reachable", not "current".
+ */
+const focusedRow = (page: Page) => page.locator("[data-task-row]:focus");
+
+/**
+ * Opens a dialog with its keyboard shortcut.
+ *
+ * Retried, because a key pressed straight after `goto` can land before the
+ * client component has hydrated and attached its listener — Playwright waits
+ * for elements, not for hydration. The visibility check before pressing keeps
+ * the retry safe for a shortcut that toggles: pressing again while the dialog
+ * is open would close it.
+ */
+async function openWithKey(page: Page, key: string, dialog: Locator) {
+  await expect(async () => {
+    if (!(await dialog.isVisible())) await page.keyboard.press(key);
+    await expect(dialog).toBeVisible({ timeout: 500 });
+  }).toPass({ timeout: 10_000 });
+}
+
 async function capture(page: Page, title: string) {
   const input = page.getByRole("textbox", { name: "Add a task" });
   await type(input, title);
@@ -295,8 +318,10 @@ test("completing a task moves it to Completed, and unticking returns it", async 
   await page.goto("/completed");
   await expect(taskRow(page, title)).toBeVisible();
 
-  // Unticking there sends it back to Today.
-  await mutate(page, () => page.getByRole("checkbox", { name: `Complete ${title}` }).click());
+  // Unticking there sends it back to Today. The control is named "Reopen" on a
+  // completed task — the label reflects what it does, so asserting "Complete"
+  // here would be asserting a bug.
+  await mutate(page, () => page.getByRole("checkbox", { name: `Reopen ${title}` }).click());
   await expect(taskRow(page, title)).toBeHidden();
 
   await page.goto("/");
@@ -408,4 +433,137 @@ test("a subtask shows as progress on its parent", async ({ page }) => {
 
   await expect(panel.getByText("first step")).toBeVisible();
   await expect(panel.getByText(/Subtasks · 0\/1/)).toBeVisible();
+});
+
+/**
+ * M6 — keyboard operation.
+ *
+ * Desktop only, and not for layout reasons: these assert on physical key
+ * presses and DOM focus, neither of which is how anyone drives a phone.
+ */
+test("completes a task with the keyboard and keeps focus in the list", async ({
+  page,
+  isMobile,
+}) => {
+  test.skip(isMobile, "keyboard-only path; mobile has swipe instead");
+
+  await page.goto("/");
+  const first = unique();
+  const second = unique();
+  await capture(page, first);
+  await capture(page, second);
+
+  // Leave the capture box, or the keys belong to the input.
+  await page.getByRole("textbox", { name: "Add a task" }).blur();
+
+  // `j` enters the list from anywhere. The arrows deliberately do not: taking
+  // them globally would mean Down stopped scrolling the page. Retried because a
+  // key pressed straight after load can beat hydration.
+  await expect(async () => {
+    await page.keyboard.press("j");
+    await expect(focusedRow(page)).toHaveAttribute("aria-label", new RegExp(first), {
+      timeout: 500,
+    });
+  }).toPass({ timeout: 10_000 });
+
+  // Once a row holds focus, the arrows work inside the list too.
+  await page.keyboard.press("ArrowDown");
+  await expect(focusedRow(page)).toHaveAttribute("aria-label", new RegExp(second));
+
+  await mutate(page, () => page.keyboard.press(" "));
+  await expect(taskRow(page, second)).toBeHidden();
+
+  // The cursor must land on a row rather than the document body: a keyboard
+  // user who completes a task has to be able to press Space again.
+  await expect(focusedRow(page)).toHaveAttribute("aria-label", new RegExp(first));
+});
+
+test("the command palette navigates without the mouse", async ({ page, isMobile }) => {
+  test.skip(isMobile, "keyboard-only path");
+
+  await page.goto("/");
+  const palette = page.getByRole("dialog", { name: "Command palette" });
+  await openWithKey(page, "ControlOrMeta+k", palette);
+
+  await page.keyboard.type("upcom");
+  await page.keyboard.press("Enter");
+
+  await expect(page).toHaveURL(/\/upcoming$/);
+  await expect(page.getByRole("heading", { name: "Upcoming", level: 1 })).toBeVisible();
+});
+
+test("every shortcut the help overlay lists is one the app defines", async ({ page, isMobile }) => {
+  test.skip(isMobile, "keyboard-only path");
+
+  await page.goto("/");
+  const overlay = page.getByRole("dialog", { name: "Keyboard shortcuts" });
+  await openWithKey(page, "?", overlay);
+  // Rendered from `lib/shortcuts.ts`, so this asserts the overlay is wired to
+  // that array at all — an empty list would mean the import silently broke.
+  await expect(overlay.getByText("Command palette")).toBeVisible();
+  await expect(overlay.getByText("Complete or reopen")).toBeVisible();
+});
+
+test("mobile can reach every view through the drawer", async ({ page, isMobile }) => {
+  test.skip(!isMobile, "the drawer only exists below the md breakpoint");
+
+  await page.goto("/");
+  // A CSS locator, not `getByRole`: the closed drawer is `visibility: hidden`,
+  // so it is absent from the accessibility tree and a role query cannot tell
+  // "off-canvas" from "has not streamed in yet". Waiting for it to be attached
+  // first means the hidden assertion below is about the drawer being closed
+  // rather than about the rail being slow.
+  // `.first()` because Next keeps previously-visited route trees mounted after
+  // a client-side navigation — collapsed to 0x0, but still in the DOM, so the
+  // selector matches two or three rails after a few clicks. The live one comes
+  // first in document order. Measured, not assumed: the count plateaus at 3,
+  // so it is route retention rather than a leak.
+  const nav = page.locator('nav[aria-label="Views and lists"]').first();
+  await nav.waitFor({ state: "attached" });
+
+  // Off-canvas and out of the a11y tree until asked for. This is the regression
+  // that matters: the rail was simply `hidden` on mobile for five milestones,
+  // so a phone could reach Today and nothing else.
+  await expect(nav).toBeHidden();
+
+  // Retried for hydration, like `openWithKey`. Opening is idempotent, so an
+  // extra click cannot toggle it back shut.
+  await expect(async () => {
+    await page.getByRole("button", { name: "Open views and lists" }).click();
+    await expect(nav).toBeVisible({ timeout: 500 });
+  }).toPass({ timeout: 10_000 });
+
+  await nav.getByRole("link", { name: /Upcoming/ }).click();
+  await expect(page).toHaveURL(/\/upcoming$/);
+  // Navigating is what the drawer is for, so arriving closes it.
+  await expect(nav).toBeHidden();
+});
+
+test("mobile can open search from the topbar", async ({ page, isMobile }) => {
+  test.skip(!isMobile, "the topbar only exists below the md breakpoint");
+
+  await page.goto("/");
+  const field = page.getByRole("textbox", { name: "Search titles and notes" });
+  await expect(async () => {
+    await page.getByRole("button", { name: "Search" }).click();
+    await expect(field).toBeVisible({ timeout: 500 });
+  }).toPass({ timeout: 10_000 });
+});
+
+test("arrow keys do not take over the page when no row is focused", async ({ page, isMobile }) => {
+  test.skip(isMobile, "keyboard-only path");
+
+  await page.goto("/");
+  await capture(page, unique());
+  await page.getByRole("textbox", { name: "Add a task" }).blur();
+
+  // The first row is in the tab order so the list is reachable, but no row has
+  // the cursor yet — so Down belongs to the page, not to us.
+  await page.keyboard.press("ArrowDown");
+  await expect(focusedRow(page)).toHaveCount(0);
+
+  // Exactly one row stays in the tab order, which is the other way in — and
+  // which the first version of the roving tabindex made impossible: with no
+  // cursor every row was `tabindex="-1"` and the list was unreachable.
+  await expect(page.locator("[data-task-row][tabindex='0']")).toHaveCount(1);
 });

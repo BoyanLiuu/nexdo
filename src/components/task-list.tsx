@@ -11,6 +11,7 @@ import { attempt } from "@/lib/actions/attempt";
 import { usePendingWriteGuard } from "@/lib/use-pending-write";
 import { completeTask, deleteTask, moveTask, renameTask, uncompleteTask } from "@/lib/actions/task";
 import { positionForMove } from "@/lib/ordering";
+import { focusAfterRemoval, useRowKeyboard } from "@/lib/use-row-keyboard";
 import { addDays, formatDayHeading, groupByDay, isOverdue, isToday } from "@/lib/dates";
 import type { ViewKey } from "@/components/rail";
 import type { SortKey } from "@/lib/server/task-service";
@@ -120,6 +121,12 @@ export function TaskList({
 
   const [detailId, setDetailId] = useState<string | null>(null);
 
+  // The keyboard cursor.
+  const [focusedId, setFocusedId] = useState<string | null>(null);
+  // Which row is being renamed. One owner, here, because `E` arrives at the
+  // list and only one row can be editing at once.
+  const [editingId, setEditingId] = useState<string | null>(null);
+
   const listById = new Map(lists.map((l) => [l.id, l]));
   const labelById = new Map(labels.map((l) => [l.id, l]));
 
@@ -156,6 +163,7 @@ export function TaskList({
   function onToggle(task: Task) {
     const done = task.completedAt !== null;
     const verb = done ? "Reopened" : "Completed";
+    handoffFocus(task.id);
 
     run(
       { type: "remove", id: task.id },
@@ -177,9 +185,9 @@ export function TaskList({
     );
   }
 
-  if (optimistic.length === 0) return <>{empty}</>;
-
   const groups = groupsFor(view, optimistic, now, upcomingDays);
+  /** Render order, flattened — what the arrows walk through. */
+  const taskIds = groups.flatMap((group) => group.tasks.map((task) => task.id));
 
   /**
    * Manual order only. Under a date or priority sort the visual order comes
@@ -187,6 +195,15 @@ export function TaskList({
    * next render.
    */
   const reorderable = sortable && sort === "manual";
+
+  /**
+   * Moves the keyboard cursor off a row that is about to disappear. Called
+   * before the optimistic removal, while the row is still in the list and its
+   * neighbours can still be found.
+   */
+  function handoffFocus(id: string) {
+    if (focusedId === id) setFocusedId(focusAfterRemoval(taskIds, id));
+  }
 
   function onMove(group: Task[], id: string, from: number, to: number) {
     const position = positionForMove(
@@ -200,6 +217,39 @@ export function TaskList({
       "Could not move that task.",
     );
   }
+
+  /** ⌥↑/⌥↓: one place within the row's own group, which is what dragging does. */
+  function onKeyboardReorder(id: string, delta: -1 | 1) {
+    const group = groups.find((g) => g.tasks.some((t) => t.id === id));
+    if (!group) return;
+    const from = group.tasks.findIndex((t) => t.id === id);
+    const to = from + delta;
+    if (to < 0 || to >= group.tasks.length) return;
+    onMove(group.tasks, id, from, to);
+  }
+
+  function deleteTaskById(id: string) {
+    const task = optimistic.find((t) => t.id === id);
+    if (!task) return;
+    handoffFocus(id);
+    run({ type: "remove", id }, () => deleteTask({ id }), "Could not delete that task.");
+  }
+
+  useRowKeyboard({
+    taskIds,
+    focusedId,
+    setFocusedId,
+    onToggle: (id) => {
+      const task = optimistic.find((t) => t.id === id);
+      if (task) onToggle(task);
+    },
+    onOpenDetail: setDetailId,
+    onStartRename: setEditingId,
+    onDelete: deleteTaskById,
+    onReorder: reorderable ? onKeyboardReorder : null,
+  });
+
+  if (optimistic.length === 0) return <>{empty}</>;
 
   const detailTask = detailId ? optimistic.find((t) => t.id === detailId) : undefined;
 
@@ -238,6 +288,11 @@ export function TaskList({
                       .filter((l) => l !== undefined)}
                     subtasks={subtasksByParent.get(task.id)}
                     dragHandle={dragHandle}
+                    focused={focusedId === task.id}
+                    tabbable={focusedId === null && task.id === taskIds[0]}
+                    editing={editingId === task.id}
+                    onEditingChange={(next) => setEditingId(next ? task.id : null)}
+                    onFocusRequest={() => setFocusedId(task.id)}
                     onOpenDetail={() => setDetailId(task.id)}
                     onComplete={() => onToggle(task)}
                     onRename={(title) =>
@@ -268,6 +323,11 @@ export function TaskList({
                 list={task.listId ? listById.get(task.listId) : undefined}
                 labels={task.labelIds.map((id) => labelById.get(id)).filter((l) => l !== undefined)}
                 subtasks={subtasksByParent.get(task.id)}
+                focused={focusedId === task.id}
+                tabbable={focusedId === null && task.id === taskIds[0]}
+                editing={editingId === task.id}
+                onEditingChange={(next) => setEditingId(next ? task.id : null)}
+                onFocusRequest={() => setFocusedId(task.id)}
                 onComplete={() => onToggle(task)}
                 onRename={(title) =>
                   run(

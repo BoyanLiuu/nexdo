@@ -6,7 +6,9 @@ import Link from "next/link";
 import { Search } from "lucide-react";
 
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { CHROME_EVENTS } from "@/lib/chrome-events";
 import { LIST_DOT } from "@/lib/colours";
+import { isTypingTarget } from "@/lib/shortcuts";
 import { formatDue } from "@/lib/dates";
 import type { Label, List, Task } from "@/lib/types";
 
@@ -24,18 +26,24 @@ export function SearchDialog({ now }: { now: string }) {
   const [input, setInput] = useState("");
   const [query, setQuery] = useState("");
 
-  // `/` from anywhere opens it, matching the hint in the rail.
+  // `/` from anywhere opens it, matching the hint in the rail. The mobile
+  // topbar has no keyboard, so it asks through the chrome event instead.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      const el = document.activeElement;
-      const typing = el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement;
-      if (e.key === "/" && !typing) {
+      if (e.key === "/" && !isTypingTarget(document.activeElement)) {
         e.preventDefault();
         setOpen(true);
       }
     }
+    function onRequest() {
+      setOpen(true);
+    }
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener(CHROME_EVENTS.openSearch, onRequest);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener(CHROME_EVENTS.openSearch, onRequest);
+    };
   }, []);
 
   useEffect(() => {

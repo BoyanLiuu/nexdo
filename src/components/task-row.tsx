@@ -1,10 +1,11 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { GripVertical, PanelRight, Repeat2, Trash2 } from "lucide-react";
 
 import { LIST_DOT } from "@/lib/colours";
 import { describeRepeat } from "@/lib/repeat";
+import { useSwipeComplete } from "@/lib/use-swipe-complete";
 import { formatDue, formatTime, isOverdue } from "@/lib/dates";
 import type { Label, List, Priority, Task } from "@/lib/types";
 
@@ -37,6 +38,11 @@ export function TaskRow({
   onDelete,
   onOpenDetail,
   dragHandle,
+  focused = false,
+  tabbable = false,
+  editing = false,
+  onEditingChange,
+  onFocusRequest,
 }: {
   task: Task;
   /**
@@ -56,22 +62,81 @@ export function TaskRow({
   onOpenDetail?: () => void;
   /** Drag handle props from dnd-kit, when the row is sortable. */
   dragHandle?: React.HTMLAttributes<HTMLButtonElement>;
+  /** The list's keyboard cursor is on this row: take real DOM focus. */
+  focused?: boolean;
+  /**
+   * In the tab order. Exactly one row is, so Tab enters the list in one stop
+   * instead of walking every row — but *some* row has to be, which the first
+   * version got wrong: with no cursor set, every row was `-1` and the list was
+   * unreachable by keyboard until something else moved focus into it.
+   */
+  tabbable?: boolean;
+  /**
+   * Whether this row is being renamed. Owned by the list, because the `E` key
+   * arrives there and only one row can be editing at a time — holding it here
+   * too would mean mirroring a prop into state in an effect, which is both a
+   * second owner and a cascading render.
+   */
+  editing?: boolean;
+  onEditingChange?: (editing: boolean) => void;
+  /** Clicking or tabbing to a row moves the list's cursor here. */
+  onFocusRequest?: () => void;
 }) {
-  const [editing, setEditing] = useState(false);
   const input = useRef<HTMLInputElement>(null);
+  const row = useRef<HTMLLIElement>(null);
+
+  // Real DOM focus, not a highlight. A screen reader announces the row, and
+  // `:focus-visible` styling comes for free — a purely visual cursor would be
+  // invisible to assistive tech and unreachable by Tab.
+  useEffect(() => {
+    if (focused && document.activeElement !== row.current) row.current?.focus();
+  }, [focused]);
+
+  const swipe = useSwipeComplete(onComplete);
 
   const done = task.completedAt !== null;
   const late = isOverdue(task.dueDate, now) && !done;
   const doneSubtasks = subtasks.filter((s) => s.completedAt !== null).length;
 
+  function stopEditing() {
+    onEditingChange?.(false);
+    // The input is about to unmount; without this, focus lands on the body and
+    // the arrow keys stop working until the user clicks something.
+    row.current?.focus();
+  }
+
   function commit() {
     const next = input.current?.value.trim() ?? "";
-    setEditing(false);
+    stopEditing();
     if (next && next !== task.title) onRename(next);
   }
 
   return (
-    <li className="group border-hair-soft bg-ground hover:bg-hover focus-within:bg-blue-tint relative grid grid-cols-[22px_minmax(0,1fr)_auto] items-start gap-x-3 border-b px-2 py-[11px] transition-colors">
+    <li
+      ref={row}
+      // A stable hook for tests and for finding rows by id. `li[tabindex]` is
+      // not specific enough: Sonner renders its toasts as focusable `li`s too.
+      data-task-row={task.id}
+      {...swipe.handlers}
+      style={
+        swipe.offset > 0
+          ? // Driven from the finger, so no transition — a transition here would
+            // make the row lag behind the touch.
+            { transform: `translateX(${swipe.offset}px)` }
+          : undefined
+      }
+      // Roving tabindex: one row is in the tab order and the arrows move which.
+      // Putting every row in the tab order would make Tab the slowest way
+      // through a long list.
+      tabIndex={focused || tabbable ? 0 : -1}
+      onFocus={(e) => {
+        // Only when the row itself takes focus, not a button inside it —
+        // otherwise clicking Delete would also move the cursor.
+        if (e.target === e.currentTarget) onFocusRequest?.();
+      }}
+      aria-label={`${task.title}${task.completedAt ? ", completed" : ""}`}
+      className="row-enter group border-hair-soft bg-ground hover:bg-hover focus-within:bg-blue-tint focus-visible:bg-blue-tint focus-visible:outline-blue relative grid grid-cols-[22px_minmax(0,1fr)_auto] items-start gap-x-3 border-b px-2 py-[11px] transition-colors focus-visible:outline-2 focus-visible:-outline-offset-2"
+    >
       {dragHandle && (
         <button
           type="button"
@@ -82,11 +147,25 @@ export function TaskRow({
           <GripVertical className="size-4" strokeWidth={2} />
         </button>
       )}
+      {swipe.offset > 0 && (
+        <span
+          aria-hidden
+          className={`absolute inset-y-0 -left-1 flex items-center text-[12.5px] font-[650] transition-colors ${
+            swipe.willComplete ? "text-blue" : "text-ink-3"
+          }`}
+          style={{ transform: `translateX(-${swipe.offset}px)` }}
+        >
+          {done ? "Reopen" : "Complete"}
+        </span>
+      )}
+
       <input
         type="checkbox"
         checked={done}
         onChange={onComplete}
-        aria-label={`Complete ${task.title}`}
+        // The control reopens a done task, so saying "Complete" would be wrong
+        // for exactly the rows where the distinction matters.
+        aria-label={`${done ? "Reopen" : "Complete"} ${task.title}`}
         className="tick border-field-edge bg-card-paper hover:border-blue checked:border-blue checked:bg-blue mt-[3px] size-5 appearance-none rounded-[6px] border-[1.5px] transition-colors"
       />
 
@@ -99,7 +178,7 @@ export function TaskRow({
             onBlur={commit}
             onKeyDown={(e) => {
               if (e.key === "Enter") commit();
-              if (e.key === "Escape") setEditing(false);
+              if (e.key === "Escape") stopEditing();
             }}
             aria-label="Task title"
             className="text-ink caret-blue focus-visible:outline-blue -my-[7px] block w-full bg-transparent py-[7px] text-[15.5px] leading-[1.4] font-[450] outline-none"
@@ -107,7 +186,7 @@ export function TaskRow({
         ) : (
           <button
             type="button"
-            onClick={() => setEditing(true)}
+            onClick={() => onEditingChange?.(true)}
             className="text-ink -my-[7px] block w-full cursor-text py-[7px] text-left text-[15.5px] leading-[1.4] font-[450] wrap-break-word"
           >
             {task.title}

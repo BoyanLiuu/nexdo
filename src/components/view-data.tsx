@@ -1,5 +1,6 @@
 import { connection } from "next/server";
 
+import { AppShortcuts } from "@/components/app-shortcuts";
 import { Rail, type ViewKey } from "@/components/rail";
 import { SearchDialog } from "@/components/search-dialog";
 import { getPrincipal } from "@/lib/server/principal";
@@ -27,14 +28,19 @@ export async function RailData({ current, currentId }: { current: ViewKey; curre
   const chrome = principal.kind === "none" ? EMPTY : await viewChrome(principal, today);
 
   return (
-    <Rail
-      current={current}
-      currentId={currentId}
-      lists={chrome.lists}
-      labels={chrome.labels}
-      counts={chrome.counts}
-      search={<SearchDialog now={today} />}
-    />
+    <>
+      <Rail
+        current={current}
+        currentId={currentId}
+        lists={chrome.lists}
+        labels={chrome.labels}
+        counts={chrome.counts}
+        search={<SearchDialog now={today} />}
+      />
+      {/* Rendered beside the rail because it needs the same lists and labels,
+          which are already fetched here — the palette costs no extra query. */}
+      <AppShortcuts lists={chrome.lists} labels={chrome.labels} />
+    </>
   );
 }
 

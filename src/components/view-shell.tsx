@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
-import { Menu, Search } from "lucide-react";
 
 import { BrandMark } from "@/components/brand";
+import { MobileTopbarActions } from "@/components/mobile-topbar-actions";
+import { RailShell } from "@/components/rail-shell";
 
 /**
  * The frame every view shares: rail, mobile topbar, title, and the scrolling
@@ -27,30 +28,18 @@ export function ViewShell({
 }) {
   return (
     <div className="bg-ground flex h-dvh overflow-hidden">
-      {rail}
+      <RailShell>{rail}</RailShell>
 
       <main className="relative min-w-0 flex-1 scroll-pt-[200px] overflow-y-auto">
         <div className="mx-auto max-w-[780px] px-4 pb-[140px] md:px-10">
           <div className="bg-ground sticky top-0 z-10 pt-0 md:pt-[30px]">
             <div className="-mx-2 flex h-13 items-center gap-1 md:hidden">
-              <button
-                type="button"
-                aria-label="Open views and lists"
-                className="rounded-cell text-ink-2 hover:bg-hover grid size-9 place-items-center"
-              >
-                <Menu className="size-5" strokeWidth={1.9} />
-              </button>
+              <MobileTopbarActions side="nav" />
               <span className="flex flex-1 items-center gap-[9px] pl-1 text-[16px] leading-none font-bold">
                 <BrandMark />
                 Nexdo
               </span>
-              <button
-                type="button"
-                aria-label="Search"
-                className="rounded-cell text-ink-2 hover:bg-hover grid size-9 place-items-center"
-              >
-                <Search className="size-5" strokeWidth={1.9} />
-              </button>
+              <MobileTopbarActions side="search" />
             </div>
 
             <header className="mb-4 flex items-start gap-4">

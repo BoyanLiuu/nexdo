@@ -187,3 +187,40 @@
     -webkit-tap-highlight-color: transparent;
   }
 }
+
+/**
+ * Motion, and the one place that turns it off.
+ *
+ * Everything in this file animates — the tick, the colour transitions, the
+ * dialog and panel enter/exit from `tw-animate-css`. `prefers-reduced-motion`
+ * is a vestibular-disorder accommodation rather than a taste setting, so it is
+ * honoured globally here instead of being remembered component by component.
+ *
+ * Durations collapse to 1ms rather than 0 on purpose: Radix waits for
+ * `animationend` before unmounting a dialog, and a zero-duration animation may
+ * never fire the event, leaving the overlay mounted and the page unusable.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@layer utilities {
+  /* A captured task arrives rather than appearing. 160ms is under the ~200ms
+     where motion starts reading as waiting. */
+  .row-enter {
+    animation: row-enter 0.16s var(--ease-out-quint) both;
+  }
+  @keyframes row-enter {
+    from {
+      opacity: 0;
+      transform: translateY(-4px);
+    }
+  }
+}

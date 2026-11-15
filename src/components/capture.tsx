@@ -9,6 +9,7 @@ import { usePendingWriteGuard } from "@/lib/use-pending-write";
 import { createTasks } from "@/lib/actions/task";
 import { parseCapture, type Chip, type Chrono } from "@/lib/parse";
 import type { NewTask } from "@/lib/schemas";
+import { isTypingTarget } from "@/lib/shortcuts";
 
 /**
  * The always-available capture box: one line of text becomes a dated,
@@ -91,13 +92,14 @@ export function Capture({
     return loadingChrono.current;
   }
 
-  // Press N from anywhere to start typing.
+  // Press N from anywhere to start typing. This binding lives here, not in the
+  // global key handler, because this component owns the ref being focused — and
+  // a key with two owners is a key that fires twice.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key !== "n" || e.metaKey || e.ctrlKey || e.altKey) return;
-      const el = document.activeElement;
       // Don't steal the key from a field the user is already typing in.
-      if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) return;
+      if (isTypingTarget(document.activeElement)) return;
       e.preventDefault();
       input.current?.focus();
     }
@@ -183,6 +185,12 @@ export function Capture({
           <Plus className="text-blue size-5" strokeWidth={2.2} />
           <input
             ref={input}
+            // How the command palette's "New task" finds this box. The capture
+            // row streams inside its own Suspense boundary while the palette
+            // sits in the static shell, so there is no shared ref to pass —
+            // and a context provider spanning that boundary just to move focus
+            // would be more machinery than one attribute.
+            data-capture-input=""
             type="text"
             value={value}
             onChange={(e) => {

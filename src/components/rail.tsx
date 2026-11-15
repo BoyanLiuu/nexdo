@@ -84,11 +84,28 @@ function SectionHeading({
   );
 }
 
-function Frame({ search, children }: { search?: React.ReactNode; children: React.ReactNode }) {
+function Frame({
+  search,
+  children,
+  placeholder = false,
+}: {
+  search?: React.ReactNode;
+  children: React.ReactNode;
+  /** The streaming fallback, which is scaffolding rather than navigation. */
+  placeholder?: boolean;
+}) {
   return (
     <nav
-      aria-label="Views and lists"
-      className="w-rail border-rail-line bg-rail hidden shrink-0 flex-col overflow-y-auto border-r p-3 md:flex"
+      // The placeholder is not labelled and is hidden from assistive tech: it
+      // and the real rail are briefly in the DOM together while the query
+      // resolves, and two navigations with the same name is both ambiguous to
+      // a screen reader and unaddressable in a test.
+      aria-label={placeholder ? undefined : "Views and lists"}
+      aria-hidden={placeholder || undefined}
+      // No `hidden md:flex` any more: `RailShell` decides whether the rail is
+      // on screen. Hiding itself here as well meant the mobile drawer slid a
+      // `display: none` element into view, which is to say nothing at all.
+      className="w-rail border-rail-line bg-rail flex shrink-0 flex-col overflow-y-auto border-r p-3"
     >
       <Brand />
       {search ?? (
@@ -112,7 +129,7 @@ function Frame({ search, children }: { search?: React.ReactNode; children: React
  */
 export function RailFallback({ current }: { current: ViewKey }) {
   return (
-    <Frame>
+    <Frame placeholder>
       <ul className="flex list-none flex-col gap-px">
         {views({ due: 0, inbox: 0, upcoming: 0, completed: 0 }).map((view) => (
           <li key={view.key}>

@@ -4,8 +4,9 @@ _Focus on what's next._
 
 Progress tracker for the build: what has actually landed, and the decisions made along the way.
 
-**Last verified:** 2026-11-15 — M0–M5 complete. `pnpm check` runs 82 unit tests under four time
-zones; `pnpm test:e2e` runs 32 across Chromium and WebKit (8 skipped, 0 flaky).
+**Last verified:** 2026-11-15 — M0–M6 complete, which finishes Phase A: the product is usable end to
+end with no sign-in anywhere. `pnpm check` runs 82 unit tests under four time zones; `pnpm test:e2e`
+runs 50 across Chromium and WebKit (36 passed, 13 skipped as platform-specific, 1 known flake).
 
 |     | Milestone                                     | Status  |
 | --- | --------------------------------------------- | ------- |
@@ -15,7 +16,7 @@ zones; `pnpm test:e2e` runs 32 across Chromium and WebKit (8 skipped, 0 flaky).
 | M3  | Dates and views                               | ✅ done |
 | M4  | Lists, labels, detail, ordering, search       | ✅ done |
 | M5  | Recurrence                                    | ✅ done |
-| M6  | Keyboard, a11y, motion, polish                | ☐       |
+| M6  | Keyboard, a11y, motion, polish                | ✅ done |
 | M7  | Clerk, claim, capability gating               | ☐       |
 | M8  | Deploy                                        | ☐       |
 
@@ -424,6 +425,22 @@ renamed two tests whose names claimed "everywhere" after the loop was gone.
   same as `restoreTask` in M1.
 - **Two separate imports of `@/lib/dates`** in one file, which lint does not flag. Merged.
 
+### Found in the review after committing
+
+Five more, from re-reading the diff rather than recalling it. The first was a user-visible defect.
+
+- **An invalid rule was described as if it were real.** Clearing the interval box gives `Number("")`
+  = 0, which fails the schema — so it was correctly held back from the server, but the summary line
+  still read "Every 0 days". One `safeParse` validity check now gates the description and replaces the
+  ad-hoc empty-weekday special case.
+- **`RepeatEditor` took four date props where two do.** The panel was computing `dueWeekday` and
+  `dueDay` with its own `weekdayOf` call and a `.slice(8, 10)`. `dayOfMonth` moved into `dates.ts`.
+- **A duplicated weekday-name array** in `repeat.ts`, copying the private one in `dates.ts`. Exported
+  and reused — in M3 a copy-pasted date helper _was_ the bug.
+- **Week ordering was implemented twice**, once for the arithmetic and once for the description.
+  Extracted, since the two must agree.
+- **`completeTask` inlined a 13-field select** that `TASK_SELECT` already is. A second list to forget.
+
 ### Bugs this milestone found
 
 - **A hydration mismatch from M4's drag-and-drop**, surfaced while verifying recurrence in a browser.
@@ -444,6 +461,117 @@ renamed two tests whose names claimed "everywhere" after the loop was gone.
   "every other Monday" late shifts the following one rather than keeping the original fortnight.
 - No test covers the completion transaction rolling back, which the plan asked for. It needs a forced
   insert failure against a real database; asserting it any other way would be asserting the mock.
+
+---
+
+## M6 — Keyboard, a11y, motion, polish ✅
+
+**Phase A is complete.** The product works end to end on `localhost` with no sign-in anywhere.
+
+- [x] Command palette on cmdk (⌘K): views, lists, labels, new task, shortcut list
+- [x] Shortcut help overlay (`?`), rendered from `lib/shortcuts.ts` — the same array the bindings are
+      declared in, so the documentation cannot drift from the app
+- [x] Full keyboard operation: J/K or ↑↓ to move, Space to complete, Enter for details, E to rename,
+      ⌥↑/⌥↓ to reorder, ⌫ to delete
+- [x] Rows take **real DOM focus** with a roving `tabindex`, and focus moves to a neighbour when the
+      focused row leaves the view
+- [x] Checkbox state is native, so it announces itself; its label says Reopen on a done task
+- [x] All motion behind `prefers-reduced-motion`, in one global rule
+- [x] Mobile: swipe-to-complete with a direction lock, and **a navigation drawer** — see below
+- [x] `app/error.tsx` for a failed read, since a Server Component failure has no toast to land in
+- [x] README rewritten: identity model, read/write paths, keyboard reference
+- [x] 82 unit tests; e2e grew to 50 (5 new), 36 passing with 13 platform-skipped
+
+### Decisions log
+
+- **One key, one owner.** `n` lives with the capture box because that component holds the input ref,
+  `?` with the shortcuts dialog, `/` with search, ⌘K with the palette. The first version had the
+  palette also binding `n` and `?`, which meant two listeners firing for one keystroke. A binding
+  belongs to whatever holds the thing it acts on.
+- **The help overlay renders the binding list.** `lib/shortcuts.ts` is the single array; an undocumented
+  shortcut is impossible by construction because there is no second list to fall behind.
+- **The palette is not the search box.** Search answers "where is that task"; the palette answers "take
+  me to Upcoming". Merging them means every navigation query runs a database search, and every task
+  search competes with view names for the top row.
+- **Rows take real focus rather than a highlight.** A purely visual cursor is invisible to a screen
+  reader and unreachable by Tab. A roving `tabindex` keeps one row in the tab order so Tab does not
+  have to walk a hundred of them.
+- **Focus is handed to a neighbour _before_ the optimistic removal**, while the row is still in the
+  list and its neighbours can still be found. Otherwise the browser's answer to "what now" is the
+  document body, which strands a keyboard user at the top of the page.
+- **Reduced motion is one global rule, not a per-component decision.** It collapses durations to 1ms
+  rather than 0 because Radix waits for `animationend` before unmounting a dialog, and a zero-duration
+  animation may never fire the event — which would leave the overlay mounted over an unusable page.
+- **Swipe is right-only, and the first few pixels decide.** Until the finger has a direction nothing
+  happens; ties go to scrolling, because a list is read far more often than it is swiped. Left is
+  reserved: delete-by-accident is unforgivable where complete-by-accident costs one tap of Undo.
+- **Two named window events (`lib/chrome-events.ts`) connect the static shell to the streamed parts.**
+  The mobile topbar lives in `ViewShell`, which is static so the frame paints before any query; the
+  drawer and the search dialog stream separately. A context provider spanning that boundary would cost
+  the shell its prerender. Not a simulated keystroke — those are indistinguishable from a real user
+  and break the moment a binding changes.
+- **No theme toggle**, which the plan listed. See below.
+
+### Bugs this milestone found
+
+- **The mobile app had no navigation at all, and had not since M0.** The rail was `hidden` below the
+  `md` breakpoint and the two topbar buttons — "Open views and lists" and "Search" — were markup with
+  no handlers. On a phone, Today was the only reachable screen: no Upcoming, no Inbox, no Completed,
+  no list, no label, no search. Five milestones of verification had all been done at desktop width.
+  Now a real drawer, with both buttons wired and 44px tap targets.
+- **`CommandDialog` as vendored by shadcn could not be used at all.** It renders
+  `<DialogContent>{children}</DialogContent>` without the `<Command>` root, so `CommandInput` has no
+  cmdk store and throws `Cannot read properties of undefined (reading 'subscribe')` the moment the
+  palette opens. Its `DialogTitle` also sat _outside_ `DialogContent`, where Radix cannot use it for
+  `aria-labelledby`. Both fixed in `ui/command.tsx`.
+- **Three React-compiler violations in my own new code**, all caught by lint rather than by a test: a
+  ref written during render in `useRowKeyboard`, a `setState` inside an effect mirroring a prop into
+  row state, and `Date.now()` on a render path. The second and third dissolved once the list — not the
+  row — owned which row is being renamed, which is the house rule about one owner per piece of state.
+- **The rail hid itself as well as being placed by the drawer.** `hidden md:flex` stayed on the `nav`
+  after `RailShell` took over positioning, so the drawer slid a `display: none` element into view. My
+  own browser check had measured the _wrapper_ and reported success — a false positive from verifying
+  the thing I changed instead of the thing the user sees. The e2e test caught it.
+- **The streaming fallback and the real rail were both `<nav aria-label="Views and lists">`**, so while
+  a query resolved there were two identically-named landmarks. The placeholder is now unlabelled and
+  `aria-hidden`: it is scaffolding, not navigation.
+- **An a11y fix broke a test, correctly.** Renaming the control to "Reopen" on a completed task made an
+  e2e test that asserted "Complete" fail. The test was encoding the old wrong label.
+
+### Found in the review before committing
+
+- **The arrow keys were taking over the page.** The handler claimed ↑/↓ and called `preventDefault`
+  whenever the user was not typing and a dialog was not open — so Down stopped scrolling anywhere in
+  the app, whether or not the cursor was near the list. The arrows now act only once a row holds
+  focus, and `j`/`k` are the way in from anywhere: a vim key is never a scroll gesture, which is
+  exactly why those two are the ones that can safely be global.
+- **The list was unreachable by Tab.** With no cursor set, every row was `tabindex="-1"` — the classic
+  roving-tabindex mistake. One row (the first, until the cursor moves) is now always in the tab order.
+- **The swipe decided its outcome from stale state.** `onTouchEnd` read the distance out of React
+  state, which is the value from the last _render_; touch events arrive faster than renders flush, so
+  a finger that visibly reached 100px could be judged on a stale 60 and the completion would silently
+  not happen. A ref now carries the authoritative distance and state only drives the transform.
+- **A second finger kept swiping.** A pinch or two-finger scroll that began on a row went on driving
+  the gesture; multi-touch now abandons it.
+- **Two e2e locators were asserting the wrong thing.** `li[tabindex='0']` matched Sonner's toasts as
+  well as rows, and after the Tab fix it matches the _reachable_ row rather than the _current_ one.
+  The cursor is now located by `:focus`, which is what the feature actually claims.
+
+### Known gaps
+
+- **No theme toggle.** The plan lists one; the design is a light-only system and `globals.css` has no
+  `.dark` block. A toggle needs a dark palette _designed_ first — picking one here would be inventing
+  a second design system rather than polishing this one. Flagged rather than guessed at.
+- **Next keeps previously-visited route trees mounted** after a client-side navigation, collapsed to
+  0×0 but still in the DOM, so there are two or three `nav` landmarks named "Views and lists" after a
+  few clicks. Measured: it plateaus at 3, so it is route retention rather than a leak. It predates M6
+  — the old rail had the same duplicates on desktop — and it makes `getByRole` ambiguous in tests,
+  which is why the drawer test takes `.first()`.
+- One mobile e2e flake remains, in the capture and completion tests. It passes 8/8 in isolation and
+  fails roughly one run in three under six parallel workers, which points at machine contention
+  rather than the app. Not root-caused.
+- Swipe-to-complete has no visual spring back when released short of the threshold; the row simply
+  returns.
 
 ---
 

@@ -42,15 +42,20 @@ function CommandDialog({
 }) {
   return (
     <Dialog {...props}>
-      <DialogHeader className="sr-only">
-        <DialogTitle>{title}</DialogTitle>
-        <DialogDescription>{description}</DialogDescription>
-      </DialogHeader>
       <DialogContent
         className={cn("top-1/3 translate-y-0 overflow-hidden rounded-xl! p-0", className)}
         showCloseButton={showCloseButton}
       >
-        {children}
+        {/* Inside the content, not beside it: Radix wires `aria-labelledby`
+            from a title within the content, and warns when there is none. */}
+        <DialogHeader className="sr-only">
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
+        </DialogHeader>
+        {/* The cmdk root. Without it `CommandInput` and `CommandList` have no
+            store to subscribe to and throw on open — as vendored, this
+            component could not be used at all. */}
+        <Command className="rounded-none bg-transparent">{children}</Command>
       </DialogContent>
     </Dialog>
   );
