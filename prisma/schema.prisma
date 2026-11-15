@@ -1,0 +1,144 @@
+// Nexdo data model.
+//
+// Two things here are deliberate and easy to "fix" into bugs:
+//
+//   dueDate / dueTime are text, not timestamps. Prisma hydrates a DATE column
+//   into a JS Date at UTC midnight, which is exactly the bug that makes a task
+//   overdue for anyone east of London. ISO text keeps lexicographic order equal
+//   to chronological order, so `dueDate <= $today` and ORDER BY both work.
+//
+//   ownerId is non-nullable everywhere and points at Owner, not at a Clerk user
+//   id. A guest and a signed-in member are the same thing to every query, which
+//   is what lets accounts arrive later without a migration.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+// Connection URLs live in prisma.config.ts (migrations) and in the pg driver
+// adapter in src/lib/server/prisma.ts (runtime). Prisma 7 no longer accepts
+// them here.
+datasource db {
+  provider = "postgresql"
+}
+
+/// GUEST owners are a cookie; USER owners are a Clerk account. A guest becomes a
+/// member by promotion in place, so its task rows never move.
+enum OwnerKind {
+  GUEST
+  USER
+}
+
+model Owner {
+  id             String    @id @default(cuid())
+  kind           OwnerKind
+  /// Set when a Clerk account claims this owner.
+  clerkUserId    String?   @unique @map("clerk_user_id")
+  /// sha256 of the guest cookie token — never the token itself, so a database
+  /// dump does not yield live sessions.
+  guestTokenHash String?   @unique @map("guest_token_hash")
+  /// IANA zone, e.g. "Asia/Tokyo". The server renders every view, so "today" is
+  /// computed from this rather than from the server's clock.
+  timeZone       String    @default("UTC") @map("time_zone")
+  /// Set when a guest owner is consumed by a merge into an existing account.
+  claimedAt      DateTime? @map("claimed_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  /// Touched on mutation, not on read. Drives pruning of abandoned guests.
+  lastSeenAt     DateTime  @default(now()) @map("last_seen_at")
+
+  tasks  Task[]
+  lists  List[]
+  labels Label[]
+
+  @@index([kind, claimedAt, lastSeenAt])
+  @@map("owners")
+}
+
+model List {
+  id         String    @id @default(cuid())
+  ownerId    String    @map("owner_id")
+  name       String
+  colour     String
+  emoji      String?
+  /// Fractional index, so reordering writes one row.
+  position   String
+  isArchived Boolean   @default(false) @map("is_archived")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+  deletedAt  DateTime? @map("deleted_at")
+
+  owner Owner  @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  tasks Task[]
+
+  @@index([ownerId, position])
+  @@map("lists")
+}
+
+model Label {
+  id        String    @id @default(cuid())
+  ownerId   String    @map("owner_id")
+  name      String
+  colour    String
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
+
+  owner Owner       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  tasks TaskLabel[]
+
+  @@index([ownerId])
+  @@map("labels")
+}
+
+model Task {
+  id       String  @id @default(cuid())
+  ownerId  String  @map("owner_id")
+  listId   String? @map("list_id")
+  /// A subtask points at its parent task.
+  parentId String? @map("parent_id")
+
+  title String
+  notes String @default("")
+
+  /// ISO calendar date, 'YYYY-MM-DD'. Deliberately not a timestamp.
+  dueDate String? @db.Char(10) @map("due_date")
+  /// 'HH:MM', 24-hour.
+  dueTime String? @db.Char(5) @map("due_time")
+
+  /// 1 = highest, 4 = none.
+  priority Int    @default(4)
+  position String
+
+  /// Repeat rule: { kind, interval, weekdays[], ... }. A typed union in app code,
+  /// not RRULE — "3 days after completion" has no fixed schedule.
+  repeat Json?
+  /// Links occurrences of one repeating task, so completion history survives.
+  seriesId String? @map("series_id")
+
+  completedAt DateTime? @map("completed_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  deletedAt   DateTime? @map("deleted_at")
+
+  owner    Owner       @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  list     List?       @relation(fields: [listId], references: [id], onDelete: SetNull)
+  parent   Task?       @relation("Subtasks", fields: [parentId], references: [id], onDelete: Cascade)
+  subtasks Task[]      @relation("Subtasks")
+  labels   TaskLabel[]
+
+  @@index([ownerId, dueDate])
+  @@index([ownerId, listId, position])
+  @@index([parentId])
+  @@index([seriesId])
+  @@map("tasks")
+}
+
+model TaskLabel {
+  taskId  String @map("task_id")
+  labelId String @map("label_id")
+
+  task  Task  @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  label Label @relation(fields: [labelId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, labelId])
+  @@index([labelId])
+  @@map("task_labels")
+}

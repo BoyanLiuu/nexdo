@@ -4,7 +4,7 @@ import type { Label, List, Task } from "@/lib/types";
  * Read-only sample data for M0. The Today screen renders from this until M1
  * replaces the import with a `taskService` call.
  *
- * Deliberately NOT a store: no localStorage, no reducer, no mutation. See the
+ * Deliberately NOT a store: no localStorage, no reducer, no mutation.
  * M0 guardrails in MILESTONES.md — a local store here would turn M1's
  * one-line swap into a rewrite of the view tree.
  *

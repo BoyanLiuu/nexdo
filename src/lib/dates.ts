@@ -8,10 +8,31 @@
  * anyone but you.
  */
 
-/** Local calendar date as `YYYY-MM-DD`. */
+/**
+ * Today's calendar date in a given IANA zone, as `YYYY-MM-DD`.
+ *
+ * The zone is an argument because the *server* renders these views: calling
+ * `new Date()` and reading its local parts would yield the deploy region's date,
+ * which is wrong for most users. The owner row carries the zone for exactly
+ * this call.
+ *
+ * Omitting the zone uses the machine's own, which is only ever right in dev.
+ */
+export function todayIn(timeZone?: string): string {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date());
+
+  const get = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)!.value;
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
+/** The machine's local calendar date. Prefer `todayIn(owner.timeZone)`. */
 export function today(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  return todayIn();
 }
 
 /** ISO date strings compare correctly as strings, which is why they are stored as text. */

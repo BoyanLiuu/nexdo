@@ -1,21 +1,17 @@
 import { connection } from "next/server";
-import { CalendarCheck, Menu, Search } from "lucide-react";
+import { Menu, Search } from "lucide-react";
 
 import { BrandMark } from "@/components/brand";
 import { Capture } from "@/components/capture";
-import { EmptyState } from "@/components/empty-state";
 import { Rail } from "@/components/rail";
-import { TaskGroup } from "@/components/task-group";
-import { TaskRow } from "@/components/task-row";
-import { formatLongDate, isOverdue, isToday, today } from "@/lib/dates";
-import { labels, lists, tasks } from "@/lib/fixtures";
-import type { Task } from "@/lib/types";
+import { TodayList } from "@/components/today-list";
+import { formatLongDate, todayIn } from "@/lib/dates";
+import { getPrincipal } from "@/lib/server/principal";
+import { todayView } from "@/lib/server/task-service";
 
 /**
- * Today is a request-time route, not a prerendered one: the whole view is
- * derived from the current date, so a build-time snapshot would be stale by the
- * next midnight. M1 makes it request-time regardless, since resolving the
- * principal reads a cookie.
+ * Today is request-time, not prerendered: it reads a cookie to resolve the
+ * principal, and the whole view derives from the current date.
  *
  * `instant = false` accepts a blocking render for now. M3 builds all four views
  * with a Suspense boundary per section, which is the point at which the static
@@ -24,44 +20,29 @@ import type { Task } from "@/lib/types";
 export const instant = false;
 
 export default async function TodayPage() {
+  // Reading cookies already makes this dynamic, but Next still evaluates the
+  // route in a prerender pass and rejects the `new Date()` behind `todayIn()`
+  // as an unstable value. `connection()` opts out of that pass explicitly.
   await connection();
 
-  const now = today();
-  const listById = new Map(lists.map((l) => [l.id, l]));
-  const labelById = new Map(labels.map((l) => [l.id, l]));
+  const principal = await getPrincipal();
 
-  // Indexed once rather than filtering `tasks` per row: the per-row filter is
-  // free at fixture scale and quadratic at real scale.
-  const subtasksByParent = new Map<string, Task[]>();
-  for (const task of tasks) {
-    if (task.parentId === null) continue;
-    const siblings = subtasksByParent.get(task.parentId);
-    if (siblings) siblings.push(task);
-    else subtasksByParent.set(task.parentId, [task]);
-  }
+  // A first-time visitor has no owner row yet, so there is nothing to query.
+  // The empty view costs zero round trips, which is what keeps crawler traffic
+  // from touching the database at all.
+  const data =
+    principal.kind === "none"
+      ? { tasks: [], subtasks: [], lists: [], labels: [], inboxCount: 0 }
+      : await todayView(principal, todayIn(principal.timeZone));
 
-  const open = tasks.filter((t) => t.completedAt === null && t.parentId === null);
-  const overdue = open.filter((t) => isOverdue(t.dueDate, now));
-  const due = open.filter((t) => isToday(t.dueDate, now));
-  const inbox = open.filter((t) => t.listId === null);
-
-  const row = (task: Task) => (
-    <TaskRow
-      key={task.id}
-      task={task}
-      now={now}
-      list={task.listId ? listById.get(task.listId) : undefined}
-      labels={task.labelIds.map((id) => labelById.get(id)).filter((l) => l !== undefined)}
-      subtasks={subtasksByParent.get(task.id)}
-    />
-  );
+  const now = principal.kind === "none" ? todayIn() : todayIn(principal.timeZone);
 
   return (
     <div className="bg-ground flex h-dvh overflow-hidden">
       <Rail
-        lists={lists}
-        labels={labels}
-        counts={{ overdueAndToday: overdue.length + due.length, inbox: inbox.length }}
+        lists={data.lists}
+        labels={data.labels}
+        counts={{ overdueAndToday: data.tasks.length, inbox: data.inboxCount }}
       />
 
       <main className="relative min-w-0 flex-1 scroll-pt-[200px] overflow-y-auto">
@@ -95,40 +76,26 @@ export default async function TodayPage() {
                 <h1 className="text-[26px] leading-[1.15] font-bold tracking-[-0.02em] text-balance md:text-[30px]">
                   Today
                 </h1>
-                {/* The design shows the local time and zone here, plus a note when
-                    UTC has already rolled over. Both need the owner's zone rather
-                    than the server's clock, so they arrive in M3. */}
+                {/* The design also shows the local time, the zone name, and a note
+                    when UTC has already rolled over. Those arrive in M3. */}
                 <div className="text-ink-2 mt-[5px] flex flex-wrap items-center gap-x-2.5 gap-y-1 text-[14px]">
                   <span>{formatLongDate(now)}</span>
                 </div>
               </div>
             </header>
 
-            <Capture />
+            {/* Capturing from Today dates the task today, so it lands in the view
+                you are looking at rather than silently in Inbox. */}
+            <Capture dueDate={now} />
           </div>
 
-          {overdue.length === 0 && due.length === 0 ? (
-            <EmptyState
-              icon={<CalendarCheck className="size-6" strokeWidth={1.9} />}
-              title="Nothing due today"
-            >
-              Everything scheduled for today is done. Anything you add above without a date lands in
-              Inbox.
-            </EmptyState>
-          ) : (
-            <>
-              {overdue.length > 0 && (
-                <TaskGroup title="Overdue" count={overdue.length} tone="late">
-                  {overdue.map(row)}
-                </TaskGroup>
-              )}
-              {due.length > 0 && (
-                <TaskGroup title="Today" count={due.length}>
-                  {due.map(row)}
-                </TaskGroup>
-              )}
-            </>
-          )}
+          <TodayList
+            tasks={data.tasks}
+            subtasks={data.subtasks}
+            lists={data.lists}
+            labels={data.labels}
+            now={now}
+          />
         </div>
       </main>
     </div>

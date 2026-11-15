@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Figtree } from "next/font/google";
 
+import { Toaster } from "@/components/ui/sonner";
+
 import "./globals.css";
 
 const figtree = Figtree({
@@ -35,7 +37,11 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={figtree.variable}>
-      <body className="antialiased">{children}</body>
+      <body className="antialiased">
+        {children}
+        {/* Undo lives in a toast, so this is load-bearing, not decoration. */}
+        <Toaster position="bottom-center" closeButton />
+      </body>
     </html>
   );
 }

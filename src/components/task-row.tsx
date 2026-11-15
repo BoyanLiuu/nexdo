@@ -1,3 +1,8 @@
+"use client";
+
+import { useRef, useState } from "react";
+import { Trash2 } from "lucide-react";
+
 import { LIST_DOT } from "@/lib/colours";
 import { formatDue, formatTime, isOverdue } from "@/lib/dates";
 import type { Label, List, Priority, Task } from "@/lib/types";
@@ -20,24 +25,15 @@ function PriorityFlag({ priority }: { priority: Priority }) {
   );
 }
 
-/** Native checkbox styled as the design's `.tick`. No handler in M0 — see MILESTONES.md. */
-function Tick({ done, label }: { done: boolean; label: string }) {
-  return (
-    <input
-      type="checkbox"
-      defaultChecked={done}
-      aria-label={`Complete ${label}`}
-      className="tick border-field-edge bg-card-paper hover:border-blue checked:border-blue checked:bg-blue mt-[3px] size-5 appearance-none rounded-[6px] border-[1.5px] transition-colors"
-    />
-  );
-}
-
 export function TaskRow({
   task,
   now,
   list,
   labels,
   subtasks = [],
+  onComplete,
+  onRename,
+  onDelete,
 }: {
   task: Task;
   /**
@@ -50,23 +46,56 @@ export function TaskRow({
   list?: List;
   labels?: Label[];
   subtasks?: Task[];
+  onComplete: () => void;
+  onRename: (title: string) => void;
+  onDelete: () => void;
 }) {
+  const [editing, setEditing] = useState(false);
+  const input = useRef<HTMLInputElement>(null);
+
   const done = task.completedAt !== null;
   const late = isOverdue(task.dueDate, now) && !done;
   const doneSubtasks = subtasks.filter((s) => s.completedAt !== null).length;
 
+  function commit() {
+    const next = input.current?.value.trim() ?? "";
+    setEditing(false);
+    if (next && next !== task.title) onRename(next);
+  }
+
   return (
-    <li className="border-hair-soft bg-ground hover:bg-hover focus-within:bg-blue-tint grid grid-cols-[22px_minmax(0,1fr)_auto] items-start gap-x-3 border-b px-2 py-[11px] transition-colors">
-      <Tick done={done} label={task.title} />
+    <li className="group border-hair-soft bg-ground hover:bg-hover focus-within:bg-blue-tint grid grid-cols-[22px_minmax(0,1fr)_auto] items-start gap-x-3 border-b px-2 py-[11px] transition-colors">
+      <input
+        type="checkbox"
+        checked={done}
+        onChange={onComplete}
+        aria-label={`Complete ${task.title}`}
+        className="tick border-field-edge bg-card-paper hover:border-blue checked:border-blue checked:bg-blue mt-[3px] size-5 appearance-none rounded-[6px] border-[1.5px] transition-colors"
+      />
 
       <div className="min-w-0">
-        <span
-          className={`-my-[7px] block py-[7px] text-[15.5px] leading-[1.4] font-[450] wrap-break-word ${
-            done ? "text-ink-3 decoration-hair-strong line-through" : "text-ink"
-          }`}
-        >
-          {task.title}
-        </span>
+        {editing ? (
+          <input
+            ref={input}
+            autoFocus
+            defaultValue={task.title}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commit();
+              if (e.key === "Escape") setEditing(false);
+            }}
+            aria-label="Task title"
+            className="text-ink caret-blue focus-visible:outline-blue -my-[7px] block w-full bg-transparent py-[7px] text-[15.5px] leading-[1.4] font-[450] outline-none"
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="text-ink -my-[7px] block w-full cursor-text py-[7px] text-left text-[15.5px] leading-[1.4] font-[450] wrap-break-word"
+          >
+            {task.title}
+          </button>
+        )}
 
         {(task.dueDate || list || labels?.length || task.notes || subtasks.length > 0) && (
           <div className="text-ink-3 mt-1 flex flex-wrap items-center gap-x-3.5 gap-y-[3px] text-[13px] leading-[1.4]">
@@ -105,13 +134,21 @@ export function TaskRow({
                 {doneSubtasks}/{subtasks.length}
               </span>
             )}
-
-            {task.notes && <span className="inline-flex items-center gap-[5px]">Notes</span>}
           </div>
         )}
       </div>
 
-      <PriorityFlag priority={task.priority} />
+      <div className="flex items-center gap-1.5">
+        <PriorityFlag priority={task.priority} />
+        <button
+          type="button"
+          onClick={onDelete}
+          aria-label={`Delete ${task.title}`}
+          className="text-ink-3 hover:bg-verm-tint hover:text-verm grid size-7 place-items-center rounded opacity-0 transition group-hover:opacity-100 focus-visible:opacity-100"
+        >
+          <Trash2 className="size-4" strokeWidth={1.9} />
+        </button>
+      </div>
     </li>
   );
 }
