@@ -103,15 +103,6 @@ export async function deleteTask(input: unknown): Promise<ActionResult> {
   return ok();
 }
 
-export async function restoreTask(input: unknown): Promise<ActionResult> {
-  const auth = await authorize(input, "task:delete");
-  if ("error" in auth) return fail(auth.error);
-
-  await taskService.restoreTask(auth.principal, auth.id);
-  revalidatePath("/");
-  return ok();
-}
-
 export async function renameTask(input: unknown): Promise<ActionResult> {
   const parsed = renameTaskSchema.safeParse(input);
   if (!parsed.success) {

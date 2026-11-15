@@ -180,14 +180,6 @@ export async function deleteTask(principal: OwnedPrincipal, id: string): Promise
   await touch(principal);
 }
 
-export async function restoreTask(principal: OwnedPrincipal, id: string): Promise<void> {
-  await prisma.task.updateMany({
-    where: { id, ownerId: principal.ownerId },
-    data: { deletedAt: null },
-  });
-  await touch(principal);
-}
-
 /** Touched on mutation only, never on read — it drives pruning of idle guests. */
 async function touch(principal: OwnedPrincipal): Promise<void> {
   await prisma.owner.update({
