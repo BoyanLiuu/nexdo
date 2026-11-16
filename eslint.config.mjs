@@ -12,14 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
-    // Generated output, none of which we write or may edit.
-    // `src/generated` is Prisma's client; the Playwright directories are the
-    // HTML report and its bundled trace viewer, which is minified third-party
-    // JavaScript and the actual source of every error this config ever
-    // reported from "generated code".
+    // Prisma's generated client: code we do not write and must not edit, and
+    // it is regenerated on every install.
     "src/generated/**",
-    "playwright-report/**",
-    "test-results/**",
   ]),
 ]);
 

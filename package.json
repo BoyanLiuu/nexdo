@@ -13,8 +13,6 @@
     "format:check": "prettier --check .",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "playwright test",
-    "test:e2e:webkit": "E2E_WEBKIT=1 playwright test --project=webkit --workers=2",
     "analyze": "ANALYZE=true next build",
     "check": "pnpm typecheck && pnpm lint && pnpm format:check && pnpm test:tz",
     "postinstall": "prisma generate",
@@ -52,7 +50,6 @@
   },
   "devDependencies": {
     "@next/bundle-analyzer": "^16.4.6",
-    "@playwright/test": "^1.65.0",
     "@tailwindcss/turbopack": "4.3.3",
     "@testing-library/dom": "^10.4.2",
     "@testing-library/react": "^16.3.3",

@@ -254,9 +254,6 @@ importers:
       '@next/bundle-analyzer':
         specifier: ^16.4.6
         version: 16.4.6
-      '@playwright/test':
-        specifier: ^1.65.0
-        version: 1.65.0
       '@tailwindcss/turbopack':
         specifier: 4.3.3
         version: 4.3.3
@@ -5940,6 +5937,7 @@ snapshots:
   '@playwright/test@1.65.0':
     dependencies:
       playwright: 1.65.0
+    optional: true
 
   '@polka/url@1.0.0-next.29': {}
 
@@ -9281,11 +9279,13 @@ snapshots:
     dependencies:
       find-up: 3.0.0
 
-  playwright-core@1.65.0: {}
+  playwright-core@1.65.0:
+    optional: true
 
   playwright@1.65.0:
     dependencies:
       playwright-core: 1.65.0
+    optional: true
 
   possible-typed-array-names@1.1.0: {}
 

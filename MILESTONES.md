@@ -5,8 +5,14 @@ _Focus on what's next._
 Progress tracker for the build: what has actually landed, and the decisions made along the way.
 
 **Last verified:** 2026-11-15 — M0–M6 complete, which finishes Phase A: the product is usable end to
-end with no sign-in anywhere. `pnpm check` runs 82 unit tests under four time zones; `pnpm test:e2e`
-runs 50 across Chromium and WebKit (36 passed, 13 skipped as platform-specific, 1 known flake).
+end with no sign-in anywhere. `pnpm check` runs 82 unit tests under four time zones.
+
+> **The end-to-end suite was removed** before M7. It had grown a database guard that refuses to run
+> once a signed-in account exists, which Clerk is about to create, and keeping both meant a separate
+> test database or an override flag. The milestone logs below still describe it, because they record
+> what happened at the time — several bugs in M4, M6 and after were found by it and by nothing else
+> (the mobile navigation gap, the rail's height, the create/complete race). It is recoverable from
+> git history if that trade stops being worth it.
 
 |     | Milestone                                     | Status  |
 | --- | --------------------------------------------- | ------- |
@@ -636,16 +642,15 @@ not. Measured before changing anything: complete repainted in **8ms**, create to
 ## Conventions
 
 - `pnpm check` = typecheck + lint + format check + unit tests. Green before every milestone commit.
-- `pnpm test:e2e` runs desktop Chromium only, and is green: 29 passed, no retries, ~32s. The iPhone
-  and desktop-WebKit projects were removed after measuring that every failure and flake in the suite
-  was WebKit's and none Chromium's — and that running WebKit _serially_ was the worst result, so it is
-  not contention. `pnpm test:e2e:webkit` still runs it; treat that as an open investigation, not a
-  gate. The cost is that nothing now watches the cookie behaviour WebKit once caught (see M1).
-- **Stop the dev server before running e2e.** Locally both connect through Supabase's _session_
-  pooler, which allows 15 clients; six Playwright workers plus a dev server exceed it and every query
-  fails with `(EMAXCONNSESSION) max clients reached in session mode`. It surfaces as a wave of
-  unrelated "element not found" failures, which reads like an app regression and is not one.
-- Dev binds `127.0.0.1:3033`; Playwright builds and serves on `127.0.0.1:3133`.
+- **No browser tests.** Verification of anything in a browser is manual now, so a change to
+  rendering, navigation or an optimistic path needs looking at rather than asserting. The unit suite
+  covers date arithmetic, parsing, recurrence and ordering — all the pure logic — and none of the UI.
+- **Connection budget:** Supabase's _session_ pooler allows 15 clients for the project and Next runs
+  several render workers, each with its own pool, so the limit is
+  `workers x DATABASE_POOL_MAX < 15`. Exceeding it fails every query with
+  `(EMAXCONNSESSION) max clients reached in session mode`, and the app still renders its static shell
+  with all the data missing — which reads like a UI bug rather than a database one.
+- Dev binds `127.0.0.1:3033`.
 - `pnpm dev:utc` runs the server in UTC while the browser reports its real zone — the only way to
   reproduce the production time-zone mismatch locally before M8.
 - `pnpm` is not on PATH in this environment; use `corepack pnpm`, or a shim on PATH for tools that

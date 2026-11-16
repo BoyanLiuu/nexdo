@@ -115,7 +115,7 @@ scroll gesture. All motion is behind `prefers-reduced-motion`.
 | Client   | `useOptimistic` + `useTransition`; TanStack Query for search only; React Hook Form + Zod in the detail panel         |
 | Parsing  | `chrono-node`, loaded on first keystroke                                                                             |
 | Auth     | Clerk, Google OAuth — M7, and additive because of the `Principal` abstraction                                        |
-| Testing  | Vitest (four time zones), Playwright (Chromium and WebKit)                                                           |
+| Testing  | Vitest, run under four time zones                                                                                    |
 
 Two environment variables, because migrations and runtime need different connections: `DATABASE_URL`
 is the Supabase transaction pooler (`:6543`) for the app, and `DIRECT_URL` is the session pooler
@@ -139,21 +139,20 @@ corepack pnpm dev          # http://127.0.0.1:3033
 | `check`               | typecheck + lint + format check + unit tests                                        |
 | `test` / `test:watch` | Vitest                                                                              |
 | `test:tz`             | The unit suite under four `TZ` values                                               |
-| `test:e2e`            | Playwright, desktop Chromium                                                        |
-| `test:e2e:webkit`     | The same suite under WebKit — currently unreliable, see below                       |
 | `analyze`             | Bundle treemap                                                                      |
 
 `dev:utc` and `test:tz` are worth knowing about. Normally your dev server and browser share a time
 zone, which is exactly the condition that hides the date bugs above. Running the server in UTC while
 the browser reports your real zone reproduces what production looks like.
 
-**A gap worth knowing about.** The e2e suite runs desktop Chromium only. An iPhone project and a
-desktop WebKit project were both removed after measurement: every failure and flake in the suite
-belonged to WebKit and none to Chromium, and running WebKit serially — the least contended setup —
-was the _worst_ result of all, so it is not a parallelism problem. Whether that is a real difference
-in how this app behaves under WebKit or something local is unresolved.
+## What is not tested
 
-That matters because the one engine-specific bug this project has had was the guest cookie's `Secure`
-flag, which Safari silently refuses over plain http while Chromium exempts localhost. WebKit caught
-it and nothing is watching that now. `pnpm test:e2e:webkit` keeps the run available, but treat it as
-an investigation rather than a gate until the flakiness is explained.
+There are no browser tests. The unit suite covers the pure logic — calendar arithmetic across time
+zones, the capture parser, recurrence, fractional ordering — and nothing that renders. Rendering,
+navigation, the optimistic paths and the guest cookie are checked by hand.
+
+Worth knowing what that costs, because it has already cost something. The guest cookie's `Secure`
+flag was once derived from `NODE_ENV`, and Safari silently refuses a `Secure` cookie over plain http
+while Chromium exempts localhost — so guests were lost on every reload in Safari, and a WebKit
+browser test is what caught it. **Check cookie and date behaviour in a real Safari before trusting a
+deploy.**
