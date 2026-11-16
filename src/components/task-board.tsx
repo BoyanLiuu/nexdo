@@ -133,7 +133,11 @@ export function TaskBoard({
    * (Completed is a record). Passed as values rather than as a ready-made
    * element because capture needs the insert callback this component owns.
    */
-  capture: { defaultDueDate: string | null; defaultListId: string | null } | null;
+  capture: {
+    dueOffsetDays: number | null;
+    defaultListId: string | null;
+    zoneKnown: boolean;
+  } | null;
 }) {
   const [optimistic, apply] = useOptimistic(tasks, reduce);
   /**
@@ -285,7 +289,8 @@ export function TaskBoard({
   const captureBox = capture && (
     <Capture
       today={now}
-      defaultDueDate={capture.defaultDueDate}
+      dueOffsetDays={capture.dueOffsetDays}
+      zoneKnown={capture.zoneKnown}
       defaultListId={capture.defaultListId}
       // The highest key on screen. `optimistic` is kept sorted, so this is its
       // last element — and new tasks chain from it.

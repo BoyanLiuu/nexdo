@@ -124,9 +124,14 @@ export async function ViewBody({
           view === "completed"
             ? null
             : {
-                defaultDueDate:
-                  view === "upcoming" ? addDays(now, 1) : view === "today" ? now : null,
+                // An offset from "today" rather than a date, because which day
+                // that is depends on a zone this request may not know yet.
+                dueOffsetDays: view === "upcoming" ? 1 : view === "today" ? 0 : null,
                 defaultListId: view === "list" ? (targetId ?? null) : null,
+                // False for a visitor who has never written: there is no owner,
+                // so no stored zone, and `now` above is UTC. The browser knows
+                // better, and capture asks it.
+                zoneKnown: principal.kind !== "none",
               }
         }
       />

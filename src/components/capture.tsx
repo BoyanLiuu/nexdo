@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { createId } from "@paralleldrive/cuid2";
 
 import { attempt } from "@/lib/actions/attempt";
+import { addDays, todayIn } from "@/lib/dates";
 import { usePendingWriteGuard } from "@/lib/use-pending-write";
 import { createTasks } from "@/lib/actions/task";
 import { positionsAfter } from "@/lib/ordering";
@@ -70,7 +71,8 @@ function toOptimisticTask(input: NewTask & { id: string; position: string }): Ta
 
 export function Capture({
   today,
-  defaultDueDate,
+  dueOffsetDays,
+  zoneKnown = true,
   lists = [],
   labels = [],
   defaultListId = null,
@@ -80,10 +82,27 @@ export function Capture({
   /** The user's calendar date. Only a reference for chip labels. */
   today: string;
   /**
-   * What an unparsed task gets. The current view's day, so a new task lands
-   * where you are looking — or null in Inbox, which is for undated work.
+   * How far from "today" an unparsed task is dated: 0 on Today, 1 on Upcoming,
+   * null in Inbox and list views, which are for undated work.
+   *
+   * An offset rather than a date because *which day* today is depends on a time
+   * zone the server may not know yet — see `zoneKnown`.
    */
-  defaultDueDate: string | null;
+  dueOffsetDays: number | null;
+  /**
+   * Whether `today` was computed from a real stored zone.
+   *
+   * False for a visitor who has never written anything: there is no owner row,
+   * so no zone, and the server fell back to UTC. Their first task was then
+   * dated in UTC — a day out for most of the world, and it landed in Upcoming
+   * instead of Today for anyone behind UTC. The browser knows the zone, so when
+   * this is false the date is computed here instead.
+   *
+   * The server's date still wins when it *is* known, because the views are
+   * grouped by the stored zone: preferring the browser there would date a task
+   * for a day the view it lands in disagrees with.
+   */
+  zoneKnown?: boolean;
   /** Passed in so `#home` can resolve to an id without a round trip. */
   lists?: readonly { id: string; name: string }[];
   labels?: readonly { id: string; name: string }[];
@@ -193,6 +212,12 @@ export function Capture({
     // `generateNKeysBetween` is deterministic, so chaining from the same seed
     // gives the server the identical keys and the optimistic row keeps the
     // position it is stored with.
+    // The day to date an unparsed task, resolved now rather than at render:
+    // reading the browser's zone during render would disagree with the HTML the
+    // server sent and break hydration.
+    const base = zoneKnown ? today : todayIn(Intl.DateTimeFormat().resolvedOptions().timeZone);
+    const defaultDueDate = dueOffsetDays === null ? null : addDays(base, dueOffsetDays);
+
     const keys = positionsAfter(lastPosition, lines.length);
     const tasks: (NewTask & { id: string; position: string })[] = lines.map((line, i) => {
       const parsed = parseCapture(line, { today, chrono: parser, dismissed, lists, labels });
