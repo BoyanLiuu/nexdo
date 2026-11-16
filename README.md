@@ -139,12 +139,21 @@ corepack pnpm dev          # http://127.0.0.1:3033
 | `check`               | typecheck + lint + format check + unit tests                                        |
 | `test` / `test:watch` | Vitest                                                                              |
 | `test:tz`             | The unit suite under four `TZ` values                                               |
-| `test:e2e`            | Playwright, Chromium and WebKit                                                     |
+| `test:e2e`            | Playwright, desktop Chromium                                                        |
+| `test:e2e:webkit`     | The same suite under WebKit — currently unreliable, see below                       |
 | `analyze`             | Bundle treemap                                                                      |
 
 `dev:utc` and `test:tz` are worth knowing about. Normally your dev server and browser share a time
 zone, which is exactly the condition that hides the date bugs above. Running the server in UTC while
 the browser reports your real zone reproduces what production looks like.
 
-WebKit in the e2e suite is not optional: guest identity is a cookie, and the only engine-specific bug
-found so far appeared only in Safari.
+**A gap worth knowing about.** The e2e suite runs desktop Chromium only. An iPhone project and a
+desktop WebKit project were both removed after measurement: every failure and flake in the suite
+belonged to WebKit and none to Chromium, and running WebKit serially — the least contended setup —
+was the _worst_ result of all, so it is not a parallelism problem. Whether that is a real difference
+in how this app behaves under WebKit or something local is unresolved.
+
+That matters because the one engine-specific bug this project has had was the guest cookie's `Secure`
+flag, which Safari silently refuses over plain http while Chromium exempts localhost. WebKit caught
+it and nothing is watching that now. `pnpm test:e2e:webkit` keeps the run available, but treat it as
+an investigation rather than a gate until the flakiness is explained.

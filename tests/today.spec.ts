@@ -115,10 +115,9 @@ test("captures a task and persists it across a reload", async ({ page }) => {
   await expect(taskRow(page, title)).toBeVisible();
 });
 
-test("keeps focus in the capture box for the next task", async ({ page, isMobile }) => {
+test("keeps focus in the capture box for the next task", async ({ page }) => {
   // Skipped on mobile: soft-keyboard focus behaviour is its own problem, and
   // M6 owns pinning capture above the keyboard.
-  test.skip(!!isMobile, "desktop focus model only");
 
   const title = unique();
   await page.goto("/");
@@ -183,10 +182,9 @@ test("applies a parsed priority to a task due today", async ({ page }) => {
   await expect(page.getByTitle("Priority 1")).toBeVisible();
 });
 
-test("a task parsed onto a future date leaves the Today view", async ({ page, isMobile }) => {
+test("a task parsed onto a future date leaves the Today view", async ({ page }) => {
   // Desktop only: this asserts an absence, which is also true before the write
   // lands, so it needs the response wait that flakes on mobile WebKit.
-  test.skip(!!isMobile, "needs write confirmation; see the note above");
 
   const title = unique();
   await page.goto("/");
@@ -225,8 +223,7 @@ test("a dismissed chip returns its token to the title", async ({ page }) => {
   await expect(taskRow(page, `${title} p1`)).toBeVisible();
 });
 
-test("the rail navigates between the four views", async ({ page, isMobile }) => {
-  test.skip(!!isMobile, "the rail is a drawer on mobile; M6 owns opening it");
+test("the rail navigates between the four views", async ({ page }) => {
   await page.goto("/");
 
   for (const [name, heading] of [
@@ -245,7 +242,7 @@ test("the rail navigates between the four views", async ({ page, isMobile }) => 
   }
 });
 
-test("a task dated tomorrow appears in Upcoming, not Today", async ({ page, isMobile }) => {
+test("a task dated tomorrow appears in Upcoming, not Today", async ({ page }) => {
   /**
    * Desktop only. The behaviour under test — a write propagating across routes —
    * is not mobile-specific, and running several WebKit contexts in parallel on
@@ -253,7 +250,6 @@ test("a task dated tomorrow appears in Upcoming, not Today", async ({ page, isMo
    * Mobile keeps the rendering and parsing coverage, which is where its own
    * layout and input model actually differ.
    */
-  test.skip(!!isMobile, "cross-route write propagation is not mobile-specific");
 
   const title = unique();
   await page.goto("/");
@@ -273,7 +269,7 @@ test("a task dated tomorrow appears in Upcoming, not Today", async ({ page, isMo
   await expect(page.getByRole("heading", { name: /^Tomorrow/ })).toBeVisible();
 });
 
-test("capture in Inbox leaves the task undated", async ({ page, isMobile }) => {
+test("capture in Inbox leaves the task undated", async ({ page }) => {
   /**
    * Desktop only. The behaviour under test — a write propagating across routes —
    * is not mobile-specific, and running several WebKit contexts in parallel on
@@ -281,7 +277,6 @@ test("capture in Inbox leaves the task undated", async ({ page, isMobile }) => {
    * Mobile keeps the rendering and parsing coverage, which is where its own
    * layout and input model actually differ.
    */
-  test.skip(!!isMobile, "cross-route write propagation is not mobile-specific");
 
   const title = unique();
   await page.goto("/inbox");
@@ -297,10 +292,7 @@ test("capture in Inbox leaves the task undated", async ({ page, isMobile }) => {
   await expect(taskRow(page, title)).toBeHidden();
 });
 
-test("completing a task moves it to Completed, and unticking returns it", async ({
-  page,
-  isMobile,
-}) => {
+test("completing a task moves it to Completed, and unticking returns it", async ({ page }) => {
   /**
    * Desktop only. The behaviour under test — a write propagating across routes —
    * is not mobile-specific, and running several WebKit contexts in parallel on
@@ -308,7 +300,6 @@ test("completing a task moves it to Completed, and unticking returns it", async 
    * Mobile keeps the rendering and parsing coverage, which is where its own
    * layout and input model actually differ.
    */
-  test.skip(!!isMobile, "cross-route write propagation is not mobile-specific");
 
   const title = unique();
   await page.goto("/");
@@ -344,7 +335,7 @@ test("sorting by priority is applied by the server and survives a reload", async
   await expect(page.getByRole("combobox", { name: "Sort by" })).toHaveValue("priority");
 });
 
-test("Upcoming keeps empty days so the week has shape", async ({ page, isMobile }) => {
+test("Upcoming keeps empty days so the week has shape", async ({ page }) => {
   /**
    * Desktop only. The behaviour under test — a write propagating across routes —
    * is not mobile-specific, and running several WebKit contexts in parallel on
@@ -352,7 +343,6 @@ test("Upcoming keeps empty days so the week has shape", async ({ page, isMobile 
    * Mobile keeps the rendering and parsing coverage, which is where its own
    * layout and input model actually differ.
    */
-  test.skip(!!isMobile, "cross-route write propagation is not mobile-specific");
 
   // Needs one task in the window, or the view shows its empty state instead of
   // day headings — otherwise this passes or fails on test ordering.
@@ -369,12 +359,8 @@ test("Upcoming keeps empty days so the week has shape", async ({ page, isMobile 
   await expect(page.getByRole("main").getByRole("heading", { level: 2 })).toHaveCount(7);
 });
 
-test("creates a list from the rail and files a task into it with #token", async ({
-  page,
-  isMobile,
-}) => {
+test("creates a list from the rail and files a task into it with #token", async ({ page }) => {
   // Desktop only: the rail is a drawer on mobile, and M6 owns opening it.
-  test.skip(!!isMobile, "the rail is hidden on mobile until M6");
 
   const listName = `L${Date.now().toString(36)}`;
   const title = unique();
@@ -449,12 +435,7 @@ test("a subtask shows as progress on its parent", async ({ page }) => {
  * Desktop only, and not for layout reasons: these assert on physical key
  * presses and DOM focus, neither of which is how anyone drives a phone.
  */
-test("completes a task with the keyboard and keeps focus in the list", async ({
-  page,
-  isMobile,
-}) => {
-  test.skip(isMobile, "keyboard-only path; mobile has swipe instead");
-
+test("completes a task with the keyboard and keeps focus in the list", async ({ page }) => {
   await page.goto("/");
   const first = unique();
   const second = unique();
@@ -486,9 +467,7 @@ test("completes a task with the keyboard and keeps focus in the list", async ({
   await expect(focusedRow(page)).toHaveAttribute("aria-label", new RegExp(first));
 });
 
-test("the command palette navigates without the mouse", async ({ page, isMobile }) => {
-  test.skip(isMobile, "keyboard-only path");
-
+test("the command palette navigates without the mouse", async ({ page }) => {
   await page.goto("/");
   const palette = page.getByRole("dialog", { name: "Command palette" });
   await openWithKey(page, "ControlOrMeta+k", palette);
@@ -500,9 +479,7 @@ test("the command palette navigates without the mouse", async ({ page, isMobile 
   await expect(page.getByRole("heading", { name: "Upcoming", level: 1 })).toBeVisible();
 });
 
-test("every shortcut the help overlay lists is one the app defines", async ({ page, isMobile }) => {
-  test.skip(isMobile, "keyboard-only path");
-
+test("every shortcut the help overlay lists is one the app defines", async ({ page }) => {
   await page.goto("/");
   const overlay = page.getByRole("dialog", { name: "Keyboard shortcuts" });
   await openWithKey(page, "?", overlay);
@@ -512,55 +489,59 @@ test("every shortcut the help overlay lists is one the app defines", async ({ pa
   await expect(overlay.getByText("Complete or reopen")).toBeVisible();
 });
 
-test("mobile can reach every view through the drawer", async ({ page, isMobile }) => {
-  test.skip(!isMobile, "the drawer only exists below the md breakpoint");
+/**
+ * The drawer and the mobile topbar appear below the `md` breakpoint, which a
+ * resized desktop window reaches just as a phone does. Tested that way rather
+ * than under device emulation: the breakpoint is what the behaviour depends on,
+ * and emulating touch and a phone engine added flakes without adding coverage.
+ */
+test.describe("a narrow window", () => {
+  test.use({ viewport: { width: 390, height: 780 } });
 
-  await page.goto("/");
-  // A CSS locator, not `getByRole`: the closed drawer is `visibility: hidden`,
-  // so it is absent from the accessibility tree and a role query cannot tell
-  // "off-canvas" from "has not streamed in yet". Waiting for it to be attached
-  // first means the hidden assertion below is about the drawer being closed
-  // rather than about the rail being slow.
-  // `.first()` because Next keeps previously-visited route trees mounted after
-  // a client-side navigation — collapsed to 0x0, but still in the DOM, so the
-  // selector matches two or three rails after a few clicks. The live one comes
-  // first in document order. Measured, not assumed: the count plateaus at 3,
-  // so it is route retention rather than a leak.
-  const nav = page.locator('nav[aria-label="Views and lists"]').first();
-  await nav.waitFor({ state: "attached" });
+  test("can reach every view through the drawer", async ({ page }) => {
+    await page.goto("/");
+    // A CSS locator, not `getByRole`: the closed drawer is `visibility: hidden`,
+    // so it is absent from the accessibility tree and a role query cannot tell
+    // "off-canvas" from "has not streamed in yet". Waiting for it to be attached
+    // first means the hidden assertion below is about the drawer being closed
+    // rather than about the rail being slow.
+    // `.first()` because Next keeps previously-visited route trees mounted after
+    // a client-side navigation — collapsed to 0x0, but still in the DOM, so the
+    // selector matches two or three rails after a few clicks. The live one comes
+    // first in document order. Measured, not assumed: the count plateaus at 3,
+    // so it is route retention rather than a leak.
+    const nav = page.locator('nav[aria-label="Views and lists"]').first();
+    await nav.waitFor({ state: "attached" });
 
-  // Off-canvas and out of the a11y tree until asked for. This is the regression
-  // that matters: the rail was simply `hidden` on mobile for five milestones,
-  // so a phone could reach Today and nothing else.
-  await expect(nav).toBeHidden();
+    // Off-canvas and out of the a11y tree until asked for. This is the regression
+    // that matters: the rail was simply `hidden` on mobile for five milestones,
+    // so a phone could reach Today and nothing else.
+    await expect(nav).toBeHidden();
 
-  // Retried for hydration, like `openWithKey`. Opening is idempotent, so an
-  // extra click cannot toggle it back shut.
-  await expect(async () => {
-    await page.getByRole("button", { name: "Open views and lists" }).click();
-    await expect(nav).toBeVisible({ timeout: 500 });
-  }).toPass({ timeout: 10_000 });
+    // Retried for hydration, like `openWithKey`. Opening is idempotent, so an
+    // extra click cannot toggle it back shut.
+    await expect(async () => {
+      await page.getByRole("button", { name: "Open views and lists" }).click();
+      await expect(nav).toBeVisible({ timeout: 500 });
+    }).toPass({ timeout: 10_000 });
 
-  await nav.getByRole("link", { name: /Upcoming/ }).click();
-  await expect(page).toHaveURL(/\/upcoming$/);
-  // Navigating is what the drawer is for, so arriving closes it.
-  await expect(nav).toBeHidden();
+    await nav.getByRole("link", { name: /Upcoming/ }).click();
+    await expect(page).toHaveURL(/\/upcoming$/);
+    // Navigating is what the drawer is for, so arriving closes it.
+    await expect(nav).toBeHidden();
+  });
+
+  test("can open search from the topbar", async ({ page }) => {
+    await page.goto("/");
+    const field = page.getByRole("textbox", { name: "Search titles and notes" });
+    await expect(async () => {
+      await page.getByRole("button", { name: "Search" }).click();
+      await expect(field).toBeVisible({ timeout: 500 });
+    }).toPass({ timeout: 10_000 });
+  });
 });
 
-test("mobile can open search from the topbar", async ({ page, isMobile }) => {
-  test.skip(!isMobile, "the topbar only exists below the md breakpoint");
-
-  await page.goto("/");
-  const field = page.getByRole("textbox", { name: "Search titles and notes" });
-  await expect(async () => {
-    await page.getByRole("button", { name: "Search" }).click();
-    await expect(field).toBeVisible({ timeout: 500 });
-  }).toPass({ timeout: 10_000 });
-});
-
-test("arrow keys do not take over the page when no row is focused", async ({ page, isMobile }) => {
-  test.skip(isMobile, "keyboard-only path");
-
+test("arrow keys do not take over the page when no row is focused", async ({ page }) => {
   await page.goto("/");
   await capture(page, unique());
   await page.getByRole("textbox", { name: "Add a task" }).blur();
@@ -636,4 +617,24 @@ test("a task can be completed before its insert has landed", async ({ page }) =>
 
   await page.goto("/completed");
   await expect(taskRow(page, title)).toBeVisible();
+});
+
+test("the rail fills the viewport height", async ({ page }) => {
+  await page.goto("/");
+  const nav = page.locator('nav[aria-label="Views and lists"]').first();
+  await nav.waitFor({ state: "visible" });
+
+  // The rail's background stopped under the last list item once it was wrapped
+  // for the mobile drawer: the wrapper became the flex child that stretches, and
+  // a nav inside it sizes to its own content. Nothing in the suite noticed,
+  // because every assertion was about what the rail *contains*.
+  const viewport = page.viewportSize();
+  const box = await nav.boundingBox();
+  expect(box).not.toBeNull();
+  expect(box!.height).toBeGreaterThanOrEqual(viewport!.height - 2);
+
+  // And the drawer wrapper must not be wider than the rail, or a transparent
+  // strip shows between the rail's edge and its shadow.
+  const wrapperWidth = await nav.evaluate((el) => el.parentElement!.getBoundingClientRect().width);
+  expect(Math.round(wrapperWidth)).toBe(Math.round(box!.width));
 });
