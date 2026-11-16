@@ -105,7 +105,11 @@ function Frame({
       // No `hidden md:flex` any more: `RailShell` decides whether the rail is
       // on screen. Hiding itself here as well meant the mobile drawer slid a
       // `display: none` element into view, which is to say nothing at all.
-      className="w-rail border-rail-line bg-rail flex shrink-0 flex-col overflow-y-auto border-r p-3"
+      // `h-full`, because the rail is no longer the flex child that stretches to
+      // the viewport — `RailShell` is, and a nav inside it sizes to its own
+      // content. Without this the rail's background stops under the last list
+      // and the page shows through below it.
+      className="w-rail border-rail-line bg-rail flex h-full shrink-0 flex-col overflow-y-auto border-r p-3"
     >
       <Brand />
       {search ?? (

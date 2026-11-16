@@ -66,8 +66,10 @@ export function RailShell({ children }: { children: React.ReactNode }) {
 
       <div
         // `md:translate-x-0` wins back the desktop layout unconditionally, so
-        // the drawer state cannot leak into it.
-        className={`z-40 max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:w-[272px] max-md:shadow-[18px_0_40px_-20px_rgb(27_31_51/0.35)] max-md:transition-[transform,visibility] md:visible md:z-auto md:translate-x-0 ${
+        // the drawer state cannot leak into it. No width of its own: the rail
+        // sets that, and a second guess at it left a transparent strip between
+        // the drawer's edge and its own shadow.
+        className={`z-40 max-md:fixed max-md:inset-y-0 max-md:left-0 max-md:shadow-[18px_0_40px_-20px_rgb(27_31_51/0.35)] max-md:transition-[transform,visibility] md:visible md:z-auto md:translate-x-0 ${
           open
             ? "max-md:visible max-md:translate-x-0"
             : // `invisible`, not just translated: an off-canvas rail is still in
