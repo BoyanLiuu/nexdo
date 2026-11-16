@@ -145,14 +145,12 @@ corepack pnpm dev          # http://localhost:3033
 zone, which is exactly the condition that hides the date bugs above. Running the server in UTC while
 the browser reports your real zone reproduces what production looks like.
 
-## What is not tested
+## Testing
 
-There are no browser tests. The unit suite covers the pure logic — calendar arithmetic across time
-zones, the capture parser, recurrence, fractional ordering — and nothing that renders. Rendering,
-navigation, the optimistic paths and the guest cookie are checked by hand.
+The unit suite covers the logic worth asserting: calendar arithmetic across four time zones, the
+capture parser including its deliberate non-parses, recurrence, and fractional ordering. UI behaviour
+is checked by looking at it.
 
-Worth knowing what that costs, because it has already cost something. The guest cookie's `Secure`
-flag was once derived from `NODE_ENV`, and Safari silently refuses a `Secure` cookie over plain http
-while Chromium exempts localhost — so guests were lost on every reload in Safari, and a WebKit
-browser test is what caught it. **Check cookie and date behaviour in a real Safari before trusting a
-deploy.**
+That split is deliberate. The pure logic is where this app is actually hard — a date that is correct
+in one zone and wrong in another will not announce itself — and it is also the part a test can pin
+down cheaply. Rendering and navigation are faster to verify by opening them.

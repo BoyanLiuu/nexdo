@@ -23,11 +23,17 @@ import { PrismaClient } from "@/generated/prisma/client";
  * pool. Measured against the 15-slot pooler, a cap of 6 still exhausted it and
  * 2 did not — so the real constraint is `workers x max < 15`, not `max < 15`.
  *
- * Three is the compromise. Lower would serialise `viewChrome`'s six-query
- * `Promise.all` into more round trips than necessary; higher stops two server
- * processes running at once. Overridable because the right number depends on the
- * deployment: on the transaction pooler each serverless instance wants very few,
- * and the project limit is much higher.
+ * Three is the compromise *for local development*. Lower would serialise
+ * `viewChrome`'s six-query `Promise.all` into more round trips than necessary;
+ * higher stops a dev server and a second process running at once.
+ *
+ * **Deployed, set `DATABASE_POOL_MAX=6.`** The arithmetic is different there:
+ * the *transaction* pooler hands a server connection back per transaction
+ * rather than per client, so it accepts far more clients than the session
+ * pooler's 15, and each serverless instance is one process with one pool. Six
+ * is then chosen to match `viewChrome`'s fan-out exactly — enough that its six
+ * queries stay parallel, and no more, because a pool is per instance and
+ * instances multiply under load.
  */
 const MAX_CONNECTIONS = Number(process.env.DATABASE_POOL_MAX ?? 3);
 

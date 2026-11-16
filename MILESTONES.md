@@ -4,7 +4,7 @@ _Focus on what's next._
 
 Progress tracker for the build: what has actually landed, and the decisions made along the way.
 
-**Last verified:** 2026-11-15 — M0–M6 complete, which finishes Phase A: the product is usable end to
+**Last verified:** 2026-11-16 — M0–M6 complete, M7 part-built, which finishes Phase A: the product is usable end to
 end with no sign-in anywhere. `pnpm check` runs 82 unit tests under four time zones.
 
 > **The end-to-end suite was removed** before M7. It had grown a database guard that refuses to run
@@ -23,8 +23,8 @@ end with no sign-in anywhere. `pnpm check` runs 82 unit tests under four time zo
 | M4  | Lists, labels, detail, ordering, search       | ✅ done |
 | M5  | Recurrence                                    | ✅ done |
 | M6  | Keyboard, a11y, motion, polish                | ✅ done |
-| M7  | Clerk, claim, capability gating               | ☐       |
-| M8  | Deploy                                        | ☐       |
+| M7  | Clerk, claim, capability gating               | ◐ part  |
+| M8  | Deploy                                        | ◐ part  |
 
 ---
 
@@ -363,7 +363,9 @@ renamed two tests whose names claimed "everywhere" after the loop was gone.
 
 ### Known gaps
 
-- Subtasks are creatable and completable but not reorderable or nestable beyond one level.
+- Subtasks are creatable but **not completable** — the panel renders their checkbox as a
+  non-interactive `<span>`. This entry claimed otherwise until M7; corrected rather than removed,
+  because the wrong version was acted on as if true.
 - Search is `ILIKE '%q%'` over title and notes with no relevance ranking — open tasks first, then
   manual order, capped at 30. A leading wildcard cannot use an index either, so it is a scan per
   keystroke. Fine at personal-list scale; `tsvector` + GIN is the answer if it ever isn't.
@@ -639,12 +641,162 @@ not. Measured before changing anything: complete repainted in **8ms**, create to
 
 ---
 
+## M7 — Clerk, claim, capability gating ◐
+
+Identity landed; the guest-facing edges did not. What works end to end, verified in a browser against
+the real database:
+
+- [x] Clerk installed via its CLI: `@clerk/nextjs`, `ClerkProvider`, `src/proxy.ts`, catch-all
+      sign-in and sign-up routes, Google OAuth live on the development instance
+- [x] `getPrincipal()` gained its `user` branch. **A Clerk session outranks the guest cookie**, which
+      is what keeps a leftover cookie harmless after a merge, and a cookie whose owner was consumed
+      resolves to `none` rather than to an emptied owner
+- [x] `claim-service.ts`: **promote in place** — the guest row becomes the account in one `UPDATE`,
+      verified as _no task row moving_ — and **merge** when that Clerk user already had an account
+- [x] Claimed by `app/auth/claim/route.ts`, where sign-in lands. A Route Handler because it is the
+      only place that can both write the database and clear the cookie
+- [x] Idempotent: `claimedAt` inside the filter, so a replay matches zero rows. Two replays verified
+      to leave the task count unchanged
+- [x] Auth controls in the rail, carrying the browser's zone into the claim
+- [x] `MergeNotice` reporting how many tasks moved
+- [ ] **`GUEST_DENIED` is still an empty array** — see below
+- [ ] 50-task guest cap. Not implemented; there is no limit anywhere in the service
+- [ ] Guest nudge. Nothing tells a guest their work lives in this browser only and that clearing
+      cookies loses it
+- [ ] Empty-account state. One empty state serves guests and members alike, so a freshly signed-in
+      account is told "Add a task above and it lands here" with no acknowledgement that it is new
+
+### The open decision
+
+`GUEST_DENIED` was meant to make lists, labels, recurrence and search member-only. Then M4 and M5
+built all four **for guests**. Honouring the original plan now means taking capability away from
+guests who have it today, which is a worse first impression than offering durability. The
+recommendation is to leave it empty and let signing in sell exactly what it does: your work stops
+living in one browser. Not decided.
+
+### Decisions log
+
+- **`Principal` paid for itself.** Six milestones of services took a principal rather than a user id,
+  and Clerk was one new branch in one file. Nothing downstream knows a guest from a member.
+- **Promote in place is why `Task.ownerId` points at an internal `Owner`.** One row changes and no
+  task moves. A schema keyed on `clerkUserId` would rewrite every task a guest ever made, in a
+  transaction whose size grows with how much they liked the app before signing up.
+- **The claim runs in a Route Handler**, not middleware and not a Server Component. Middleware would
+  mean a database round trip on every request to serve a case that happens once per sign-in; a Server
+  Component cannot clear a cookie at all.
+- **Merge moves lists and labels too.** A task pointing at a list owned by someone else is invisible,
+  because every service filters both on `ownerId`.
+- **Duplicate label names survive a merge.** There is no uniqueness on `(ownerId, name)`, so an
+  account that already had "quick" ends up with two. Deliberate: dropping one would silently detach
+  it from whichever tasks referenced it, and merging two labels that merely share a name is a guess.
+- **The merge notice is rendered, not toasted.** The first attempt was a toast and it was gone inside
+  400ms every time — measured, and _not_ caused by the URL rewrite first blamed, which disabling it
+  disproved. The message arrives with the page, during the streaming pass that is still assembling
+  the view. Toasts are for things that happen while a page is already live.
+
+### Bugs this milestone found
+
+- **The whole app returned 500 after installing Clerk**, dev and production, with `ECONNRESET` and no
+  stack trace — the worker died rather than throwing, so a `try`/`catch` around the middleware never
+  fired. Next 16 runs `proxy.ts` in a separate worker it reaches at `http://localhost:<port>`
+  _regardless of `-H`_; bound to `127.0.0.1`, Node resolves `localhost` to `::1` first and nothing is
+  listening there. Found by bisection: no proxy file → 200, bare proxy → 200, `clerkMiddleware` →
+  500, same file as `middleware.ts` → 500, `-H localhost` → 200. The scripts now bind `localhost`,
+  which `lsof` confirms is still loopback-only and which is refused from the host's LAN address.
+- **Task positions were never valid order keys.** `createTasks` generated
+  `Date.now().toString(36)`, which sorts but is not a fractional index, so every call placing a key
+  beside one threw `invalid order key`. **Drag-to-reorder had been broken since M4** and the guest
+  merge threw on its first run. `ordering.test.ts` passed throughout because every case built its
+  inputs with `positionsAfter`, which only ever produces valid keys — a suite green on data the
+  application never generates. `scripts/repair-order-keys.mjs` rewrote 1259 of 1294 stored rows.
+- **A new visitor's first task was dated in UTC.** No owner means no stored zone, so the server fell
+  back to UTC — a day out for most of the world, and behind UTC the task landed in Upcoming instead
+  of Today. Capture now takes an offset plus whether the server's date came from a real zone, and
+  resolves the day itself at submit when it did not.
+- **`afterSignOutUrl` no longer exists on `UserButton`** in Clerk 7; where sign-out lands is an
+  instance setting now.
+
+### Known gaps
+
+- **Reordering can produce duplicate order keys.** `positionForMove` only sees the current view's
+  group, so a Today move computed a key a task in Upcoming already held. No error, and order within
+  a view is right, but the two tie wherever they appear together. The fix is for `moveTask` to take
+  neighbour _ids_ and resolve the key server-side against all the owner's tasks. This is the concrete
+  form of the long-standing "one `position` per task" limitation.
+- **The first-visit subtitle shows UTC's date.** Display-only, and it self-corrects on the first
+  write, but the heading is server-rendered before any zone is known. Fixing it needs either a zone
+  cookie written on first load or a client component that re-renders the date after hydration.
+- A Clerk test user exists on the development instance:
+  `nexdo-m7-1794803838+clerk_test@example.com`. Created by the CLI because bot protection blocks
+  automated sign-ups.
+
+---
+
+## M8 — Deploy ◐
+
+Code side done and tested locally; the deploy itself is pending.
+
+- [x] `api/cron/prune-guests` behind `CRON_SECRET`, with `vercel.json` scheduling it daily
+- [x] `.env.example` documenting every variable the deploy needs
+- [x] `DATABASE_POOL_MAX` decided: 3 locally, **6 deployed**
+- [x] No database work needed after all — RLS is already on all five application tables with zero
+      policies, and `prisma migrate status` reports the schema up to date
+- [ ] Vercel project created and environment variables set
+- [ ] Deployed, and the claim flow verified over real HTTPS
+- [x] Bundle measured: **168.9 KB gzipped** shared first-load JS across 8 chunks
+
+### Decisions log
+
+- **Clerk stays on its development instance.** A production instance needs a domain with DNS you
+  control and your own Google OAuth app, neither of which teaches anything about this codebase. Dev
+  instances are not origin-locked, so they sign in from a `*.vercel.app` URL. Costs a "Development
+  mode" badge, a consent screen branded Clerk, and a user cap.
+- **One database, shared with development** — reversed from the plan. The argument for separating it
+  was examined three times and shrank each time; what killed it was noticing that the 15-client
+  ceiling belongs to _session mode_ alone, and a deployed app uses the transaction pooler. The
+  surviving risk is accepted: a destructive command run locally hits the live site, because it is the
+  same database. Precautions are `migrate deploy` only, and split if it ever gets real users.
+- **The cron fails closed.** No `CRON_SECRET` means 503, not a prune — a missing secret is a
+  misconfiguration, and the wrong answer to one is deleting rows for whoever found the URL.
+- **`lastSeenAt` is touched on mutation, not on read**, which is what makes the age check safe: a
+  crawler cannot keep a dead guest alive, and an active user cannot be pruned while they are active.
+- **Pool size is asymmetric** — 3 local, 6 deployed. Local is bounded by the session pooler's 15
+  divided by Next's render workers; deployed, the transaction pooler returns a connection per
+  transaction, so the bound moves to per-instance and 6 matches `viewChrome`'s fan-out exactly.
+
+### Verified locally
+
+The prune was tested against three seeded owners, all last seen 31 days ago:
+
+| Owner                                          | Outcome                        |
+| ---------------------------------------------- | ------------------------------ |
+| Abandoned guest with one task                  | **pruned**, task cascaded away |
+| Guest a sign-in had consumed (`claimedAt` set) | survived                       |
+| Account (`kind: USER`)                         | survived                       |
+
+And its authorisation four ways: no header → 401, wrong secret → 401, correct → `{"pruned":1}`, and
+`CRON_SECRET` unset → **503 even with a valid token**, logging the refusal.
+
+### Known gaps
+
+- **The bundle figure is not comparable to M4's 129.4 KB.** That came from Next's build output, which
+  this version no longer prints, so this one was computed from the build manifest. Different
+  instrument, so the delta is not a measurement — but one 168 KB chunk holds 427 Clerk references,
+  which places the cause beyond doubt.
+- **Two things deploy will exercise for the first time.** The guest cookie's `Secure` flag has never
+  met a real secure origin, because `next start` serves production mode over plain http locally. And
+  the transaction pooler on 6543 has never been reached at all — it is blocked on the development
+  network, so both local URLs point at 5432. The plan claimed from M1 that using the pooler
+  throughout de-risked deployment; it did not, because the pooler in use was the wrong one.
+
+---
+
 ## Conventions
 
 - `pnpm check` = typecheck + lint + format check + unit tests. Green before every milestone commit.
-- **No browser tests.** Verification of anything in a browser is manual now, so a change to
-  rendering, navigation or an optimistic path needs looking at rather than asserting. The unit suite
-  covers date arithmetic, parsing, recurrence and ordering — all the pure logic — and none of the UI.
+- **Tests cover logic, not the browser** — date arithmetic across zones, the capture parser,
+  recurrence, fractional ordering. UI behaviour is checked by looking at it. A deliberate choice for a
+  project of this size, not a gap waiting to be filled.
 - **Connection budget:** Supabase's _session_ pooler allows 15 clients for the project and Next runs
   several render workers, each with its own pool, so the limit is
   `workers x DATABASE_POOL_MAX < 15`. Exceeding it fails every query with
