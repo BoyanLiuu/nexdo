@@ -205,7 +205,13 @@ export async function createSubtask(input: unknown): Promise<ActionResult> {
   if (principal.kind === "none") return fail("Add a task first.");
   assertCan(principal, "task:create");
 
-  await taskService.createSubtask(principal, parsed.data.parentId, parsed.data.title);
+  await taskService.createSubtask(
+    principal,
+    parsed.data.parentId,
+    parsed.data.title,
+    parsed.data.id,
+    parsed.data.position,
+  );
   revalidateViews();
   return ok();
 }

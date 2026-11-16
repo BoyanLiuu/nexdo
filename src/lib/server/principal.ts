@@ -1,15 +1,16 @@
 import { createHash, randomBytes } from "node:crypto";
 import { cookies, headers } from "next/headers";
 import { cache } from "react";
+import { auth } from "@clerk/nextjs/server";
 
 import { prisma } from "@/lib/server/prisma";
 
 /**
  * Who is making this request.
  *
- * `user` does not occur yet — Clerk arrives in M7, at which point this gains one
- * branch and nothing else changes. Services take a Principal rather than a user
- * id precisely so that stays true: a guest and a member produce the same query.
+ * Services take a `Principal` rather than a user id, which is what made Clerk a
+ * one-branch change six milestones later: a guest and a member produce the same
+ * query, so nothing downstream of here knows the difference.
  */
 export type Principal =
   | { kind: "user"; ownerId: string; timeZone: string }
@@ -36,16 +37,37 @@ function hashToken(token: string): string {
  * query.
  */
 export const getPrincipal = cache(async (): Promise<Principal> => {
+  const { userId: clerkUserId } = await auth();
+
+  // A Clerk session outranks the guest cookie, and that ordering is load-bearing:
+  // after a merge the guest owner has been emptied and consumed, so a signed-in
+  // request still carrying that cookie would otherwise resolve to the wrong —
+  // now empty — owner. The account is always the answer when there is one.
+  if (clerkUserId) {
+    const account = await prisma.owner.findUnique({
+      where: { clerkUserId },
+      select: { id: true, timeZone: true },
+    });
+    // No owner yet means the session exists but the claim has not run. That
+    // window shows the empty state, which is honest, rather than guessing.
+    if (account) {
+      return { kind: "user", ownerId: account.id, timeZone: account.timeZone };
+    }
+  }
+
   const token = (await cookies()).get(GUEST_COOKIE)?.value;
   if (!token) return { kind: "none" };
 
   const owner = await prisma.owner.findUnique({
     where: { guestTokenHash: hashToken(token) },
-    select: { id: true, kind: true, timeZone: true },
+    select: { id: true, kind: true, timeZone: true, claimedAt: true },
   });
 
   // A cookie whose owner was pruned, or forged outright.
   if (!owner) return { kind: "none" };
+  // Or one a merge already consumed: those tasks live on an account now, so the
+  // cookie no longer names anything its holder should be shown.
+  if (owner.claimedAt !== null) return { kind: "none" };
 
   return {
     kind: owner.kind === "USER" ? "user" : "guest",
@@ -53,6 +75,20 @@ export const getPrincipal = cache(async (): Promise<Principal> => {
     timeZone: owner.timeZone,
   };
 });
+
+/** The guest cookie as sent, for the claim path to resolve and then consume. */
+export async function readGuestToken(): Promise<string | null> {
+  return (await cookies()).get(GUEST_COOKIE)?.value ?? null;
+}
+
+export function guestTokenHash(token: string): string {
+  return hashToken(token);
+}
+
+/** Dropped once a claim consumes it, so signing out cannot resurrect a guest. */
+export async function clearGuestCookie(): Promise<void> {
+  (await cookies()).delete(GUEST_COOKIE);
+}
 
 /**
  * Whether to mark the guest cookie `Secure`.

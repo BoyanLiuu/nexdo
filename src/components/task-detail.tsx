@@ -18,6 +18,9 @@ import { attempt } from "@/lib/actions/attempt";
 import { createSubtask, setTaskLabels, updateTask } from "@/lib/actions/task";
 import { LIST_DOT } from "@/lib/colours";
 import { formatDue } from "@/lib/dates";
+import { createId } from "@paralleldrive/cuid2";
+
+import { positionAfter } from "@/lib/ordering";
 import { isoDate, isoTime } from "@/lib/schemas";
 import type { Label, List, Priority, Task } from "@/lib/types";
 
@@ -73,6 +76,7 @@ export function TaskDetail({
   now,
   open,
   onOpenChange,
+  onCreateSubtask,
 }: {
   task: Task;
   subtasks: Task[];
@@ -81,6 +85,12 @@ export function TaskDetail({
   now: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /**
+   * Hands the new subtask to whoever owns the subtask array, so it draws before
+   * the insert lands. Called inside this component's transition, which is what
+   * holds the optimistic row until the action settles.
+   */
+  onCreateSubtask?: (subtask: Task) => void;
 }) {
   const [pending, startTransition] = useTransition();
   const [selectedLabels, setSelectedLabels] = useState<string[]>(task.labelIds);
@@ -150,9 +160,36 @@ export function TaskDetail({
     if (!title) return;
     setSubtaskTitle("");
 
+    // Minted here for the same reason task creation does it: the row is drawn
+    // from this data, so it has to carry the identity the row will be stored
+    // with. The key chains from the last subtask on screen, and the generator
+    // is deterministic, so the server lands on the same one.
+    const id = createId();
+    const position = positionAfter(subtasks.at(-1)?.position ?? null);
+
     startTransition(async () => {
+      // Before the await and inside the transition, so React holds the row
+      // until the action settles and then takes the server's version.
+      onCreateSubtask?.({
+        id,
+        position,
+        parentId: task.id,
+        title,
+        // What a new subtask is by definition — not guesses. It inherits its
+        // parent's list, which is what the service stores.
+        listId: task.listId,
+        notes: "",
+        dueDate: null,
+        dueTime: null,
+        priority: 4,
+        labelIds: [],
+        completedAt: null,
+        repeat: null,
+        seriesId: null,
+      });
+
       const outcome = await attempt(
-        () => createSubtask({ parentId: task.id, title }),
+        () => createSubtask({ parentId: task.id, title, id, position }),
         "Could not add that subtask.",
       );
       if (outcome.status !== "ok" && outcome.status !== "slow") {

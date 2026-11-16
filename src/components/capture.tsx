@@ -8,6 +8,7 @@ import { createId } from "@paralleldrive/cuid2";
 import { attempt } from "@/lib/actions/attempt";
 import { usePendingWriteGuard } from "@/lib/use-pending-write";
 import { createTasks } from "@/lib/actions/task";
+import { positionsAfter } from "@/lib/ordering";
 import { parseCapture, type Chip, type Chrono } from "@/lib/parse";
 import type { NewTask } from "@/lib/schemas";
 import type { Priority, Task } from "@/lib/types";
@@ -73,6 +74,7 @@ export function Capture({
   lists = [],
   labels = [],
   defaultListId = null,
+  lastPosition = null,
   onCreate,
 }: {
   /** The user's calendar date. Only a reference for chip labels. */
@@ -87,6 +89,12 @@ export function Capture({
   labels?: readonly { id: string; name: string }[];
   /** A list view files new tasks into itself unless the text says otherwise. */
   defaultListId?: string | null;
+  /**
+   * The order key of the last row on screen, so a new task sorts after it. The
+   * server chains from the same seed, which is what keeps the optimistic row's
+   * position and the stored one identical.
+   */
+  lastPosition?: string | null;
   /**
    * Hands the parsed tasks to whoever owns the task array, so they can be drawn
    * before the insert lands. Called inside this component's transition, which
@@ -177,13 +185,21 @@ export function Capture({
     // the row be drawn immediately and still be the same row the database gets:
     // the task can be completed, opened or deleted before the insert lands,
     // because its id is already final.
-    const base = Date.now();
+    //
+    // The keys are real fractional indices chained from the last row on screen.
+    // They were `Date.now().toString(36)` until a guest-to-member merge threw
+    // `invalid order key` on one — those sort fine but cannot be placed next to,
+    // so dragging a task had been failing since the day ordering shipped.
+    // `generateNKeysBetween` is deterministic, so chaining from the same seed
+    // gives the server the identical keys and the optimistic row keeps the
+    // position it is stored with.
+    const keys = positionsAfter(lastPosition, lines.length);
     const tasks: (NewTask & { id: string; position: string })[] = lines.map((line, i) => {
       const parsed = parseCapture(line, { today, chrono: parser, dismissed, lists, labels });
       return {
         id: createId(),
-        // Derived from one base so a pasted block keeps the order it was typed.
-        position: (base + i).toString(36),
+        // A pasted block keeps the order it was typed.
+        position: keys[i],
         // A line that was *entirely* tokens still needs a title; fall back to
         // the raw line rather than saving an empty task.
         title: parsed.title || line.trim(),

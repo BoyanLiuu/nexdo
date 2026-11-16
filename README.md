@@ -126,14 +126,14 @@ is the Supabase transaction pooler (`:6543`) for the app, and `DIRECT_URL` is th
 
 ```bash
 corepack pnpm install
-corepack pnpm dev          # http://127.0.0.1:3033
+corepack pnpm dev          # http://localhost:3033
 ```
 
 `pnpm` may not be on your PATH; `corepack pnpm` works without installing anything.
 
 | Script                | What it does                                                                        |
 | --------------------- | ----------------------------------------------------------------------------------- |
-| `dev`                 | Dev server on `127.0.0.1:3033`                                                      |
+| `dev`                 | Dev server on `localhost:3033`                                                      |
 | `dev:utc`             | Same, with the server in UTC — reproduces the production time-zone mismatch locally |
 | `build` / `start`     | Production build and serve                                                          |
 | `check`               | typecheck + lint + format check + unit tests                                        |

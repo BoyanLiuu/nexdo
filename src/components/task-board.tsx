@@ -136,6 +136,16 @@ export function TaskBoard({
   capture: { defaultDueDate: string | null; defaultListId: string | null } | null;
 }) {
   const [optimistic, apply] = useOptimistic(tasks, reduce);
+  /**
+   * Subtasks are a separate array because they must not appear as rows: the
+   * views render `optimistic` directly, and a subtask in there would show up
+   * as a task of its own. Only inserts need to be optimistic — nothing in the
+   * panel removes or reorders a subtask yet.
+   */
+  const [optimisticSubtasks, applySubtask] = useOptimistic(
+    subtasks,
+    (current: Task[], added: Task) => [...current, added],
+  );
   const [pending, startTransition] = useTransition();
 
   // A tick or a delete is optimistic, so the row is already gone from the screen
@@ -154,7 +164,7 @@ export function TaskBoard({
   const labelById = new Map(labels.map((l) => [l.id, l]));
 
   const subtasksByParent = new Map<string, Task[]>();
-  for (const task of subtasks) {
+  for (const task of optimisticSubtasks) {
     if (!task.parentId) continue;
     const siblings = subtasksByParent.get(task.parentId);
     if (siblings) siblings.push(task);
@@ -277,6 +287,9 @@ export function TaskBoard({
       today={now}
       defaultDueDate={capture.defaultDueDate}
       defaultListId={capture.defaultListId}
+      // The highest key on screen. `optimistic` is kept sorted, so this is its
+      // last element — and new tasks chain from it.
+      lastPosition={optimistic.at(-1)?.position ?? null}
       lists={lists}
       labels={labels}
       onCreate={(created) => apply({ type: "insert", tasks: created })}
@@ -304,6 +317,7 @@ export function TaskBoard({
           key={detailTask.id}
           task={detailTask}
           subtasks={subtasksByParent.get(detailTask.id) ?? []}
+          onCreateSubtask={(subtask) => applySubtask(subtask)}
           lists={lists}
           labels={labels}
           now={now}

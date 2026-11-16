@@ -3,7 +3,9 @@ import { Archive, CalendarCheck, CalendarDays, Inbox, Search, SquareCheck } from
 import type { LucideIcon } from "lucide-react";
 
 import { Brand } from "@/components/brand";
-import { AddToRail } from "@/components/rail-actions";
+import { AuthControls } from "@/components/auth-controls";
+import { RailCollections } from "@/components/rail-collections";
+import { ROW, ROW_CURRENT, ROW_IDLE } from "@/components/rail-row";
 import { LIST_DOT } from "@/lib/colours";
 import type { Label, List } from "@/lib/types";
 
@@ -34,11 +36,6 @@ type ViewRow = {
   alarming?: boolean;
 };
 
-const ROW =
-  "flex h-9 items-center gap-2.5 rounded-cell px-2.5 text-[14.5px] font-[550] transition-colors";
-const ROW_IDLE = "text-ink-2 hover:bg-rail-hover hover:text-ink";
-const ROW_CURRENT = "bg-card-paper text-ink shadow-item";
-
 function views(counts: RailCounts): ViewRow[] {
   return [
     {
@@ -65,23 +62,6 @@ function views(counts: RailCounts): ViewRow[] {
       count: counts.completed,
     },
   ];
-}
-
-function SectionHeading({
-  title,
-  kind,
-  existingCount,
-}: {
-  title: string;
-  kind: "list" | "label";
-  existingCount: number;
-}) {
-  return (
-    <div className="flex h-7 items-center justify-between pr-1 pb-1 pl-2.5">
-      <h2 className="text-ink-2 text-[13px] font-[650]">{title}</h2>
-      <AddToRail kind={kind} existingCount={existingCount} />
-    </div>
-  );
 }
 
 function Frame({
@@ -199,59 +179,13 @@ export function Rail({
         })}
       </ul>
 
-      <div className="mt-5">
-        <SectionHeading title="Lists" kind="list" existingCount={lists.length} />
-        <ul className="flex list-none flex-col gap-px">
-          {active.map((list) => (
-            <li key={list.id}>
-              <Link
-                href={`/list/${list.id}`}
-                aria-current={current === "list" && currentId === list.id ? "page" : undefined}
-                className={`${ROW} ${current === "list" && currentId === list.id ? ROW_CURRENT : ROW_IDLE}`}
-              >
-                {list.emoji ? (
-                  <span className="w-4 flex-none text-center text-[13px] leading-none">
-                    {list.emoji}
-                  </span>
-                ) : (
-                  <span
-                    className={`size-[11px] flex-none rounded-[3px] ${LIST_DOT[list.colour]}`}
-                  />
-                )}
-                <span className="flex-1 truncate">{list.name}</span>
-              </Link>
-            </li>
-          ))}
-        </ul>
-        {archivedCount > 0 && (
-          <div className="text-ink-3 mt-1 flex h-8 items-center gap-2 px-2.5 text-[13px]">
-            <Archive className="size-3.5" strokeWidth={1.9} />
-            Archived · {archivedCount}
-          </div>
-        )}
-      </div>
+      <RailCollections lists={lists} labels={labels} current={current} currentId={currentId} />
 
-      <div className="mt-5">
-        <SectionHeading title="Labels" kind="label" existingCount={labels.length} />
-        <ul className="flex list-none flex-col gap-px">
-          {labels.map((label) => (
-            <li key={label.id}>
-              <Link
-                href={`/label/${label.id}`}
-                aria-current={current === "label" && currentId === label.id ? "page" : undefined}
-                className={`${ROW} ${current === "label" && currentId === label.id ? ROW_CURRENT : ROW_IDLE}`}
-              >
-                <span className="text-ink-3 w-4 flex-none text-center">@</span>
-                <span className="flex-1 truncate">{label.name}</span>
-              </Link>
-            </li>
-          ))}
-        </ul>
+      {/* The slot the prototype used for a sync indicator. There is nothing to
+          sync in this architecture, so it holds the account instead. */}
+      <div className="border-rail-line mt-auto border-t pt-2">
+        <AuthControls />
       </div>
-
-      {/* The prototype's sync indicator sits here. It has no equivalent in this
-          architecture; M7 puts the account and sign-in affordance in this slot. */}
-      <div className="mt-auto pt-6" />
     </Frame>
   );
 }

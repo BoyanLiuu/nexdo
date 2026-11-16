@@ -1,6 +1,8 @@
 import type { OwnedPrincipal } from "@/lib/server/principal";
 import { prisma } from "@/lib/server/prisma";
-import { positionAfter } from "@/lib/ordering";
+import { createId } from "@paralleldrive/cuid2";
+
+import { isOrderKey, positionAfter } from "@/lib/ordering";
 import type { Label, List, ListColour } from "@/lib/types";
 
 /**
@@ -31,24 +33,36 @@ export async function createList(
   name: string,
   colour: ListColour,
   emoji: string | null,
+  id?: string,
+  position?: string,
 ): Promise<List> {
-  const last = await prisma.list.findFirst({
-    where: { ownerId: principal.ownerId, deletedAt: null },
-    orderBy: { position: "desc" },
-    select: { position: true },
-  });
+  // Only read the last key when the client did not supply a usable one, so the
+  // common path is a single statement.
+  const key = isOrderKey(position)
+    ? position
+    : positionAfter(await lastListPosition(principal.ownerId));
 
   const row = await prisma.list.create({
     data: {
+      id: id ?? createId(),
       ownerId: principal.ownerId,
       name,
       colour,
       emoji,
-      position: positionAfter(last?.position ?? null),
+      position: key,
     },
     select: LIST_SELECT,
   });
   return row as List;
+}
+
+async function lastListPosition(ownerId: string): Promise<string | null> {
+  const last = await prisma.list.findFirst({
+    where: { ownerId, deletedAt: null },
+    orderBy: { position: "desc" },
+    select: { position: true },
+  });
+  return isOrderKey(last?.position) ? last.position : null;
 }
 
 export async function renameList(principal: OwnedPrincipal, id: string, name: string) {
@@ -120,9 +134,10 @@ export async function createLabel(
   principal: OwnedPrincipal,
   name: string,
   colour: ListColour,
+  id?: string,
 ): Promise<Label> {
   const row = await prisma.label.create({
-    data: { ownerId: principal.ownerId, name, colour },
+    data: { id: id ?? createId(), ownerId: principal.ownerId, name, colour },
     select: { id: true, name: true, colour: true },
   });
   return row as Label;

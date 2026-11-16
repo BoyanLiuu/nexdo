@@ -6,8 +6,11 @@ import { toast } from "sonner";
 
 import { attempt } from "@/lib/actions/attempt";
 import { createLabel, createList } from "@/lib/actions/list";
+import { createId } from "@paralleldrive/cuid2";
+
 import { LIST_DOT } from "@/lib/colours";
-import type { ListColour } from "@/lib/types";
+import { positionAfter } from "@/lib/ordering";
+import type { Label, List, ListColour } from "@/lib/types";
 
 /**
  * The `+` beside "Lists" and "Labels".
@@ -34,13 +37,22 @@ function nextColour(existing: number): ListColour {
   return COLOURS[existing % COLOURS.length];
 }
 
-export function AddToRail({
-  kind,
-  existingCount,
-}: {
-  kind: "list" | "label";
-  existingCount: number;
-}) {
+/**
+ * What this creates depends on the kind, so the callback is typed per kind
+ * rather than as a union the caller has to narrow.
+ */
+type AddProps = { existingCount: number } & (
+  | {
+      kind: "list";
+      onCreated: (created: List) => void;
+      /** The last list's order key, so the new one sorts after it. */
+      lastPosition: string | null;
+    }
+  | { kind: "label"; onCreated: (created: Label) => void }
+);
+
+export function AddToRail(props: AddProps) {
+  const { kind, existingCount } = props;
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [, startTransition] = useTransition();
@@ -59,12 +71,27 @@ export function AddToRail({
     setName("");
     setOpen(false);
 
+    // Minted here, as task and subtask creation already do, so the row drawn
+    // immediately is the row that gets stored — and navigating to it works
+    // before the insert has landed, because its id is already final.
+    const id = createId();
+    // Labels are ordered by name, not by key, so only a list needs one.
+    const position = props.kind === "list" ? positionAfter(props.lastPosition) : "";
+
     startTransition(async () => {
+      // Inside the transition and before the await, which is what holds the
+      // optimistic row until the action settles.
+      if (props.kind === "list") {
+        props.onCreated({ id, name: trimmed, colour, emoji: null, position, isArchived: false });
+      } else {
+        props.onCreated({ id, name: trimmed, colour });
+      }
+
       const outcome = await attempt(
         () =>
           kind === "list"
-            ? createList({ name: trimmed, colour, emoji: null, timeZone })
-            : createLabel({ name: trimmed, colour, timeZone }),
+            ? createList({ id, position, name: trimmed, colour, emoji: null, timeZone })
+            : createLabel({ id, name: trimmed, colour, timeZone }),
         `Could not add that ${kind}.`,
       );
       if (outcome.status === "slow") toast.warning("Still saving.");

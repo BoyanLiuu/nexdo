@@ -1,6 +1,10 @@
+import { ClerkProvider } from "@clerk/nextjs";
 import type { Metadata, Viewport } from "next";
 import { Figtree } from "next/font/google";
 
+import { Suspense } from "react";
+
+import { MergeNotice } from "@/components/merge-notice";
 import { QueryProvider } from "@/components/query-provider";
 import { Toaster } from "@/components/ui/sonner";
 
@@ -39,9 +43,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={figtree.variable}>
       <body className="antialiased">
-        <QueryProvider>{children}</QueryProvider>
-        {/* Undo lives in a toast, so this is load-bearing, not decoration. */}
-        <Toaster position="bottom-center" closeButton />
+        <ClerkProvider>
+          {/* Reads `?merged=` from the claim redirect. In the layout rather
+              than a page because sign-in can land on any view, and inside
+              Suspense because it reads search params — which would otherwise
+              cost every route its prerender. */}
+          <Suspense>
+            <MergeNotice />
+          </Suspense>
+          <QueryProvider>{children}</QueryProvider>
+          {/* Undo lives in a toast, so this is load-bearing, not decoration. */}
+          <Toaster position="bottom-center" closeButton />
+        </ClerkProvider>
       </body>
     </html>
   );

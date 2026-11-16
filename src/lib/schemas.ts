@@ -93,6 +93,9 @@ export const listColour = z.enum([
 const name = z.string().trim().min(1, "a name is needed").max(60);
 
 export const createListSchema = z.object({
+  /** Minted by the client so the drawn row and the stored row are one row. */
+  id: taskId.optional(),
+  position: z.string().min(1).max(200).optional(),
   name,
   colour: listColour,
   /** Needed because creating a list may be a visitor's very first write, which
@@ -105,7 +108,13 @@ export const createListSchema = z.object({
 export const renameSchema = z.object({ id: taskId, name });
 export const archiveListSchema = z.object({ id: taskId, isArchived: z.boolean() });
 export const deleteListSchema = z.object({ id: taskId, keepTasks: z.boolean() });
-export const createLabelSchema = z.object({ name, colour: listColour, timeZone });
+export const createLabelSchema = z.object({
+  /** Minted by the client, for the same reason as a list's. */
+  id: taskId.optional(),
+  name,
+  colour: listColour,
+  timeZone,
+});
 
 /** Every field optional: the detail panel submits only what changed. */
 export const updateTaskSchema = z.object({
@@ -126,6 +135,9 @@ export const setLabelsSchema = z.object({
 export const createSubtaskSchema = z.object({
   parentId: taskId,
   title: z.string().trim().min(1, "a subtask needs a title").max(500),
+  /** Minted by the client so the drawn row and the stored row are one row. */
+  id: taskId.optional(),
+  position: z.string().min(1).max(200).optional(),
 });
 
 /** A reorder sends the new key, computed on the client from its neighbours. */

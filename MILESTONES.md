@@ -650,7 +650,13 @@ not. Measured before changing anything: complete repainted in **8ms**, create to
   `workers x DATABASE_POOL_MAX < 15`. Exceeding it fails every query with
   `(EMAXCONNSESSION) max clients reached in session mode`, and the app still renders its static shell
   with all the data missing — which reads like a UI bug rather than a database one.
-- Dev binds `127.0.0.1:3033`.
+- **Dev and start bind `localhost`, not `127.0.0.1`** — and the difference is load-bearing, not
+  cosmetic. Next 16 runs `proxy.ts` in a separate worker that it reaches over HTTP at
+  `http://localhost:<port>` regardless of what `-H` says. Bound to `127.0.0.1`, Node resolves
+  `localhost` to `::1` first, nothing is listening there, and every request dies with
+  `ECONNRESET` / "socket hang up" — a 500 on every route with no stack trace anywhere, because the
+  worker dies rather than throwing. `localhost` still binds loopback only (verified: `127.0.0.1:3033`
+  in `lsof`, refused from the host's LAN address), so nothing is more exposed.
 - `pnpm dev:utc` runs the server in UTC while the browser reports its real zone — the only way to
   reproduce the production time-zone mismatch locally before M8.
 - `pnpm` is not on PATH in this environment; use `corepack pnpm`, or a shim on PATH for tools that

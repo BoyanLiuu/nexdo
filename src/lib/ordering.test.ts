@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { positionAfter, positionBefore, positionForMove, positionsAfter } from "@/lib/ordering";
+import {
+  isOrderKey,
+  positionAfter,
+  positionBefore,
+  positionForMove,
+  positionsAfter,
+} from "@/lib/ordering";
 
 /**
  * The library does the midpoint maths; these pin the *properties* we rely on and
@@ -60,5 +66,46 @@ describe("ordering", () => {
       expect(positions.filter((p) => p !== positions[4])).toHaveLength(4);
       expect(moved > positions[0] && moved < positions[1]).toBe(true);
     });
+  });
+});
+
+describe("isOrderKey", () => {
+  /**
+   * The regression this module shipped with for three milestones.
+   *
+   * Task positions were generated as `Date.now().toString(36)`. Those sort
+   * correctly on their own, so lists looked right, and the suite passed —
+   * because every test above builds its inputs with `positionsAfter`, which
+   * only ever produces valid keys. The application produced a different kind
+   * of value entirely, and placing a key next to one threw.
+   *
+   * So this asserts the shape of the thing that actually broke, rather than the
+   * shape the tests happened to be using.
+   */
+  it("rejects the timestamp keys task creation used to generate", () => {
+    const legacy = Date.now().toString(36);
+    expect(isOrderKey(legacy)).toBe(false);
+    expect(() => positionAfter(legacy)).toThrow(/invalid order key/);
+  });
+
+  it("accepts the keys this module generates", () => {
+    expect(isOrderKey(positionAfter(null))).toBe(true);
+    for (const key of positionsAfter(null, 5)) expect(isOrderKey(key)).toBe(true);
+  });
+
+  it("treats nothing as not a key", () => {
+    expect(isOrderKey(null)).toBe(false);
+    expect(isOrderKey(undefined)).toBe(false);
+    expect(isOrderKey("")).toBe(false);
+  });
+
+  /**
+   * A move whose neighbours predate the repair must still produce a key rather
+   * than throwing — the row lands approximately instead of springing back.
+   */
+  it("still moves a row whose neighbours hold legacy keys", () => {
+    const legacy = [Date.now().toString(36), (Date.now() + 1).toString(36)];
+    const moved = positionForMove(legacy, 1, 0);
+    expect(isOrderKey(moved)).toBe(true);
   });
 });

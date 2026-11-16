@@ -77,6 +77,8 @@ export async function createList(input: unknown): Promise<ActionResult> {
     parsed.data.name,
     parsed.data.colour,
     parsed.data.emoji ?? null,
+    parsed.data.id,
+    parsed.data.position,
   );
   revalidateViews();
   return ok();
@@ -150,7 +152,7 @@ export async function createLabel(input: unknown): Promise<ActionResult> {
   const auth = await authorizeCreate("label:create", parsed.data.timeZone);
   if ("error" in auth) return fail(auth.error);
 
-  await lists.createLabel(auth.principal, parsed.data.name, parsed.data.colour);
+  await lists.createLabel(auth.principal, parsed.data.name, parsed.data.colour, parsed.data.id);
   revalidateViews();
   return ok();
 }

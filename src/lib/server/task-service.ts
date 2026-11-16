@@ -7,7 +7,7 @@ import { createId } from "@paralleldrive/cuid2";
 
 import { Prisma } from "@/generated/prisma/client";
 import { addDays, todayIn } from "@/lib/dates";
-import { positionAfter } from "@/lib/ordering";
+import { isOrderKey, positionAfter, positionsAfter } from "@/lib/ordering";
 import { repeatSchema, type NewTask, type Repeat } from "@/lib/schemas";
 import { nextDue, schedulesFromCompletion } from "@/lib/repeat";
 import type { Label, List, Priority, Task } from "@/lib/types";
@@ -199,6 +199,20 @@ export async function tasksForView(
   };
 }
 
+/**
+ * This owner's highest order key, or null when there is nothing to chain from —
+ * including when the highest value stored is a legacy key this module cannot
+ * extend, in which case starting fresh is the only safe answer.
+ */
+async function lastTaskPosition(principal: OwnedPrincipal): Promise<string | null> {
+  const last = await prisma.task.findFirst({
+    where: { ownerId: principal.ownerId, deletedAt: null },
+    orderBy: { position: "desc" },
+    select: { position: true },
+  });
+  return isOrderKey(last?.position) ? last.position : null;
+}
+
 export async function createTasks(principal: OwnedPrincipal, inputs: NewTask[]): Promise<number> {
   // A listId or labelId can arrive from a parsed `#token`, which is client
   // input. Resolve both against this owner's rows and drop anything that does
@@ -227,7 +241,18 @@ export async function createTasks(principal: OwnedPrincipal, inputs: NewTask[]):
   // Every row gets an id before anything is written: the client sends one so
   // its optimistic row and this row are the same row, and anything arriving
   // without one gets the same treatment here rather than a second code path.
-  const base = Date.now();
+  //
+  // Positions are trusted only when they are real order keys. The client chains
+  // them from the last row it can see, and `generateNKeysBetween` is
+  // deterministic, so the same seed produces the same keys here and there — the
+  // optimistic row keeps the position it will actually be stored with. Anything
+  // else (an older client, a crafted request) is regenerated from this owner's
+  // own last key, which costs a round trip only in that case.
+  const supplied = inputs.map((input) => input.position);
+  const positions = supplied.every(isOrderKey)
+    ? (supplied as string[])
+    : positionsAfter(await lastTaskPosition(principal), inputs.length);
+
   const rows = inputs.map((input, i) => ({
     id: input.id ?? createId(),
     ownerId: principal.ownerId,
@@ -236,9 +261,7 @@ export async function createTasks(principal: OwnedPrincipal, inputs: NewTask[]):
     dueTime: input.dueTime ?? null,
     priority: input.priority,
     listId: input.listId && listOk.has(input.listId) ? input.listId : null,
-    // A pasted block keeps the order it was written in, whether the keys come
-    // from the client or from this single base.
-    position: input.position ?? (base + i).toString(36),
+    position: positions[i],
   }));
 
   // One statement for the whole paste.
@@ -524,6 +547,8 @@ export async function createSubtask(
   principal: OwnedPrincipal,
   parentId: string,
   title: string,
+  id?: string,
+  position?: string,
 ): Promise<void> {
   const parent = await prisma.task.findFirst({
     where: { id: parentId, ownerId: principal.ownerId, deletedAt: null },
@@ -539,12 +564,20 @@ export async function createSubtask(
 
   await prisma.task.create({
     data: {
+      // Supplied by the client so the optimistic row is this row; generated
+      // here when it is not, rather than keeping two code paths.
+      id: id ?? createId(),
       ownerId: principal.ownerId,
       parentId,
       // A subtask inherits its parent's list, so it never strands in Inbox.
       listId: parent.listId,
       title,
-      position: positionAfter(last?.position ?? null),
+      // The client chains from the last subtask it can see and the generator is
+      // deterministic, so both sides land on the same key. Anything else is
+      // regenerated — guarded, because a legacy key here throws.
+      position: isOrderKey(position)
+        ? position
+        : positionAfter(isOrderKey(last?.position) ? last.position : null),
     },
   });
   await touch(principal);
