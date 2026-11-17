@@ -117,6 +117,41 @@ describe("times", () => {
   });
 });
 
+describe("recurrence phrases, which this parser does not implement", () => {
+  it("does not turn 'every 3 days' into a task due in 3 days", () => {
+    // Found on the deployed app: this filed a one-off task due 3 days out and
+    // left the lead-in word behind, titled "water the plants every".
+    expect(parse("water the plants every 3 days")).toMatchObject({
+      title: "water the plants every 3 days",
+      dueDate: null,
+      dueTime: null,
+    });
+    expect(parse("water the plants every 3 days").chips).toEqual([]);
+  });
+
+  it("does not turn 'every monday' into a task due this monday", () => {
+    // Worse than the above, because the coming Monday can be today: typed on a
+    // Monday this produced a task due immediately.
+    const monday = new Date(2026, 10, 16, 12, 0, 0); // 2026-11-16, a Monday
+    const r = parseCapture("standup every monday", {
+      today: "2026-11-16",
+      chrono,
+      now: monday,
+    });
+    expect(r.title).toBe("standup every monday");
+    expect(r.dueDate).toBeNull();
+  });
+
+  it("still reads a date when 'every' does not introduce it", () => {
+    // The guard is anchored to the end of the preceding text, so a stray
+    // "every" earlier in the line must not suppress a real date.
+    expect(parse("every so often call mum friday")).toMatchObject({
+      title: "every so often call mum",
+      dueDate: "2026-11-20",
+    });
+  });
+});
+
 describe("chips", () => {
   it("offers one chip per consumed token", () => {
     const r = parse("pay rent friday p1");

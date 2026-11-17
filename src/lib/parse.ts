@@ -62,6 +62,27 @@ function slug(value: string): string {
 /** Writing any one of these means the date was intended, not inferred. */
 const CERTAIN_DATE_PARTS = ["weekday", "day", "month", "year"] as const;
 
+/**
+ * A recurrence lead-in immediately before a date, which this parser must not
+ * consume.
+ *
+ * chrono has no concept of repetition: it reads "every 3 days" as the single
+ * date three days away, and "every monday" as the coming Monday — which, typed
+ * on a Monday, is today. So a request to repeat quietly became a one-off task,
+ * and because only the date half of the phrase was stripped, the lead-in word
+ * was left stranded in the title: "water the plants every".
+ *
+ * Capture has no recurrence grammar, so the honest answer is to consume nothing
+ * and leave the whole phrase visible, exactly as an unresolved `#token` or
+ * "meet at 5 guys" is left alone. Recurrence is then set in the detail panel,
+ * which does have the full rule. Silently producing the wrong kind of task is
+ * the one outcome worth ruling out.
+ *
+ * Anchored to the end of the preceding text, so the word has to actually
+ * introduce the date: "every so often call mum friday" still reads Friday.
+ */
+const REPEAT_LEAD_IN = /\b(?:every|each)\s*$/i;
+
 function pad(n: number): string {
   return String(n).padStart(2, "0");
 }
@@ -168,6 +189,9 @@ export function parseCapture(
 
   if (chrono) {
     for (const result of chrono.parse(text, now ?? new Date(), { forwardDate: true })) {
+      // "every 3 days" is a repeat rule, not a date. Consume neither half.
+      if (REPEAT_LEAD_IN.test(text.slice(0, result.index))) continue;
+
       // A date is only intended if the user wrote something date-ish. For "at 5"
       // chrono reports only hour and minute as certain and fills the day in from
       // the reference — offering a "Today" chip for text that never mentions
