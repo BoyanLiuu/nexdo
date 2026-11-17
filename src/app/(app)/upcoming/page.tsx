@@ -2,8 +2,6 @@ import { Suspense } from "react";
 import { CalendarDays } from "lucide-react";
 
 import { EmptyState } from "@/components/empty-state";
-import { RailData } from "@/components/view-data";
-import { RailFallback } from "@/components/rail";
 import { ViewBody } from "@/components/view-body";
 import { RowsFallback, ViewShell } from "@/components/view-shell";
 
@@ -16,14 +14,7 @@ export default function UpcomingPage({
   searchParams: Promise<{ sort?: string }>;
 }) {
   return (
-    <ViewShell
-      title="Upcoming"
-      rail={
-        <Suspense fallback={<RailFallback current="upcoming" />}>
-          <RailData current="upcoming" />
-        </Suspense>
-      }
-    >
+    <ViewShell title="Upcoming">
       <Suspense fallback={<RowsFallback />}>
         <ViewBody
           view="upcoming"

@@ -2,19 +2,21 @@ import type { ReactNode } from "react";
 
 import { BrandMark } from "@/components/brand";
 import { MobileTopbarActions } from "@/components/mobile-topbar-actions";
-import { RailShell } from "@/components/rail-shell";
 
 /**
- * The frame every view shares: rail, mobile topbar, title, and the scrolling
- * column that holds the subtitle, capture box and rows.
+ * The scrolling column: mobile topbar, title, and the subtitle, capture box and
+ * rows beneath it.
  *
- * Deliberately static. Everything that needs the database — the rail's counts,
- * the user's date, the rows — arrives through these slots wrapped in Suspense by
- * each route, so this chrome renders before any query resolves.
+ * The rail used to be here too, which is why it was unmounted on every
+ * navigation. It now lives in `app/(app)/layout.tsx`, which Next preserves
+ * across navigation — see that file and `lib/current-view.ts`.
+ *
+ * Deliberately static. Everything that needs the database arrives through these
+ * slots wrapped in Suspense by each route, so this chrome renders before any
+ * query resolves.
  */
 export function ViewShell({
   title,
-  rail,
   children,
 }: {
   /**
@@ -23,37 +25,32 @@ export function ViewShell({
    * and cost the whole route its prerender.
    */
   title: ReactNode;
-  rail: ReactNode;
   children: ReactNode;
 }) {
   return (
-    <div className="bg-ground flex h-dvh overflow-hidden">
-      <RailShell>{rail}</RailShell>
-
-      <main className="relative min-w-0 flex-1 scroll-pt-[200px] overflow-y-auto">
-        <div className="mx-auto max-w-[780px] px-4 pb-[140px] md:px-10">
-          <div className="bg-ground sticky top-0 z-10 pt-0 md:pt-[30px]">
-            <div className="-mx-2 flex h-13 items-center gap-1 md:hidden">
-              <MobileTopbarActions side="nav" />
-              <span className="flex flex-1 items-center gap-[9px] pl-1 text-[16px] leading-none font-bold">
-                <BrandMark />
-                Nexdo
-              </span>
-              <MobileTopbarActions side="search" />
-            </div>
-
-            <header className="mb-4 flex items-start gap-4">
-              <div className="min-w-0 flex-1">
-                <h1 className="text-[26px] leading-[1.15] font-bold tracking-[-0.02em] text-balance md:text-[30px]">
-                  {title}
-                </h1>
-                {children}
-              </div>
-            </header>
+    <main className="relative min-w-0 flex-1 scroll-pt-[200px] overflow-y-auto">
+      <div className="mx-auto max-w-[780px] px-4 pb-[140px] md:px-10">
+        <div className="bg-ground sticky top-0 z-10 pt-0 md:pt-[30px]">
+          <div className="-mx-2 flex h-13 items-center gap-1 md:hidden">
+            <MobileTopbarActions side="nav" />
+            <span className="flex flex-1 items-center gap-[9px] pl-1 text-[16px] leading-none font-bold">
+              <BrandMark />
+              Nexdo
+            </span>
+            <MobileTopbarActions side="search" />
           </div>
+
+          <header className="mb-4 flex items-start gap-4">
+            <div className="min-w-0 flex-1">
+              <h1 className="text-[26px] leading-[1.15] font-bold tracking-[-0.02em] text-balance md:text-[30px]">
+                {title}
+              </h1>
+              {children}
+            </div>
+          </header>
         </div>
-      </main>
-    </div>
+      </div>
+    </main>
   );
 }
 

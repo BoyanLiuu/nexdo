@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { usePathname } from "next/navigation";
 
 import { CHROME_EVENTS } from "@/lib/chrome-events";
 
@@ -20,33 +19,20 @@ import { CHROME_EVENTS } from "@/lib/chrome-events";
  * and a screen reader reading the whole navigation twice.
  */
 export function RailShell({ children }: { children: React.ReactNode }) {
-  const pathname = usePathname();
-
-  /**
-   * Which path the drawer was opened on — not a boolean.
-   *
-   * Navigating is the whole point of the drawer, so arriving somewhere has to
-   * close it, and a link inside the rail is a `<Link>` that does not notify
-   * this component. Deriving `open` from a path comparison means the close is
-   * a consequence of the new path rather than an effect that watches for it:
-   * no `setState` in an effect, no render cascade, and no window where the
-   * drawer is open over a page it did not navigate from.
-   */
-  const [openedFor, setOpenedFor] = useState<string | null>(null);
-  const open = openedFor === pathname;
+  const [open, setOpen] = useState(false);
 
   useEffect(() => {
     function onOpen() {
-      setOpenedFor(pathname);
+      setOpen(true);
     }
     window.addEventListener(CHROME_EVENTS.openNav, onOpen);
     return () => window.removeEventListener(CHROME_EVENTS.openNav, onOpen);
-  }, [pathname]);
+  }, []);
 
   useEffect(() => {
     if (!open) return;
     function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") setOpenedFor(null);
+      if (event.key === "Escape") setOpen(false);
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -59,12 +45,28 @@ export function RailShell({ children }: { children: React.ReactNode }) {
         <button
           type="button"
           aria-label="Close views and lists"
-          onClick={() => setOpenedFor(null)}
+          onClick={() => setOpen(false)}
           className="fixed inset-0 z-30 bg-[rgb(27_31_51/0.28)] md:hidden"
         />
       )}
 
       <div
+        /**
+         * Navigating is the whole point of the drawer, so following a link has
+         * to close it — and a `<Link>` inside the rail does not notify this
+         * component. One delegated handler here catches every link in the rail,
+         * including Enter on a focused one, which also fires a click.
+         *
+         * This used to derive `open` from a path comparison instead. That read
+         * the URL, and a client component reading the URL outside a Suspense
+         * boundary makes every route under this layout unprerenderable — which
+         * is exactly what it did once the rail moved into the layout. A click is
+         * the more direct signal anyway: it is the interaction, not a trace of
+         * it, and it closes the drawer even when the link is the current page.
+         */
+        onClick={(event) => {
+          if ((event.target as HTMLElement).closest("a")) setOpen(false);
+        }}
         // `md:translate-x-0` wins back the desktop layout unconditionally, so
         // the drawer state cannot leak into it. No width of its own: the rail
         // sets that, and a second guess at it left a transparent strip between

@@ -2,9 +2,7 @@ import { Suspense } from "react";
 import { Tag } from "lucide-react";
 
 import { EmptyState } from "@/components/empty-state";
-import { RailFallback } from "@/components/rail";
 import { ViewBody } from "@/components/view-body";
-import { RailData } from "@/components/view-data";
 import { RowsFallback, ViewShell } from "@/components/view-shell";
 import { LabelTitle, TitleFallback } from "@/components/view-title";
 
@@ -33,11 +31,6 @@ export default async function LabelPage({
       title={
         <Suspense fallback={<TitleFallback />}>
           <LabelTitle id={id} />
-        </Suspense>
-      }
-      rail={
-        <Suspense fallback={<RailFallback current="label" />}>
-          <RailData current="label" currentId={id} />
         </Suspense>
       }
     >

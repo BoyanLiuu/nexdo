@@ -1,8 +1,12 @@
+"use client";
+
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { Archive, CalendarCheck, CalendarDays, Inbox, Search, SquareCheck } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { Brand } from "@/components/brand";
+import { currentViewFromPath } from "@/lib/current-view";
 import { AuthControls } from "@/components/auth-controls";
 import { RailCollections } from "@/components/rail-collections";
 import { ROW, ROW_CURRENT, ROW_IDLE } from "@/components/rail-row";
@@ -22,7 +26,7 @@ import type { Label, List } from "@/lib/types";
 
 /** The rail highlights one of the four fixed views; list and label routes
  *  highlight their own row instead, so they are separate keys. */
-export type ViewKey = "today" | "upcoming" | "inbox" | "completed" | "list" | "label";
+export type ViewKey = "today" | "upcoming" | "inbox" | "completed" | "list" | "label" | "none";
 
 export type RailCounts = { due: number; inbox: number; upcoming: number; completed: number };
 
@@ -110,18 +114,19 @@ function Frame({
 /**
  * The rail with no data yet: the view rows are still navigable, which is the
  * point — the shell is usable before any query resolves.
+ *
+ * Highlights nothing, deliberately. It cannot read the pathname: a Suspense
+ * fallback renders *during* prerendering, outside its own boundary, so
+ * `usePathname()` here fails the build — which it duly did. It is also the
+ * honest rendering, since a skeleton is not yet claiming to be anywhere.
  */
-export function RailFallback({ current }: { current: ViewKey }) {
+export function RailFallback() {
   return (
     <Frame placeholder>
       <ul className="flex list-none flex-col gap-px">
         {views({ due: 0, inbox: 0, upcoming: 0, completed: 0 }).map((view) => (
           <li key={view.key}>
-            <Link
-              href={view.href}
-              aria-current={view.key === current ? "page" : undefined}
-              className={`${ROW} ${view.key === current ? ROW_CURRENT : ROW_IDLE}`}
-            >
+            <Link href={view.href} className={`${ROW} ${ROW_IDLE}`}>
               <view.icon className="text-ink-3 size-4 flex-none" strokeWidth={1.9} />
               <span className="flex-1 truncate">{view.label}</span>
             </Link>
@@ -133,22 +138,20 @@ export function RailFallback({ current }: { current: ViewKey }) {
 }
 
 export function Rail({
-  current,
-  currentId,
   lists,
   labels,
   counts,
   search,
 }: {
-  current: ViewKey;
-  /** Which list or label is open, when `current` is "list" or "label". */
-  currentId?: string;
   lists: List[];
   labels: Label[];
   counts: RailCounts;
-  /** The search dialog, passed in so the rail stays a Server Component. */
+  /** The search dialog, rendered on the server and passed in as a slot. */
   search?: React.ReactNode;
 }) {
+  // Derived rather than passed. This is what lets the rail live in the layout,
+  // where it survives navigation instead of being unmounted with each page.
+  const { current, currentId } = currentViewFromPath(usePathname());
   const active = lists.filter((l) => !l.isArchived);
   const archivedCount = lists.length - active.length;
 

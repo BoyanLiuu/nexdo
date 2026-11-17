@@ -2,8 +2,6 @@ import { Suspense } from "react";
 import { CalendarCheck } from "lucide-react";
 
 import { EmptyState } from "@/components/empty-state";
-import { RailData } from "@/components/view-data";
-import { RailFallback } from "@/components/rail";
 import { ViewBody } from "@/components/view-body";
 import { RowsFallback, ViewShell } from "@/components/view-shell";
 
@@ -16,14 +14,7 @@ import { RowsFallback, ViewShell } from "@/components/view-shell";
  */
 export default function TodayPage({ searchParams }: { searchParams: Promise<{ sort?: string }> }) {
   return (
-    <ViewShell
-      title="Today"
-      rail={
-        <Suspense fallback={<RailFallback current="today" />}>
-          <RailData current="today" />
-        </Suspense>
-      }
-    >
+    <ViewShell title="Today">
       <Suspense fallback={<RowsFallback />}>
         <ViewBody
           view="today"

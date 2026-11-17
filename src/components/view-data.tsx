@@ -1,7 +1,7 @@
 import { connection } from "next/server";
 
 import { AppShortcuts } from "@/components/app-shortcuts";
-import { Rail, type ViewKey } from "@/components/rail";
+import { Rail } from "@/components/rail";
 import { SearchDialog } from "@/components/search-dialog";
 import { getPrincipal } from "@/lib/server/principal";
 import { todayIn } from "@/lib/dates";
@@ -22,7 +22,7 @@ const EMPTY: Awaited<ReturnType<typeof viewChrome>> = {
   counts: { due: 0, inbox: 0, upcoming: 0, completed: 0 },
 };
 
-export async function RailData({ current, currentId }: { current: ViewKey; currentId?: string }) {
+export async function RailData() {
   const principal = await getPrincipal();
   const today = await userToday();
   const chrome = principal.kind === "none" ? EMPTY : await viewChrome(principal, today);
@@ -30,8 +30,6 @@ export async function RailData({ current, currentId }: { current: ViewKey; curre
   return (
     <>
       <Rail
-        current={current}
-        currentId={currentId}
         lists={chrome.lists}
         labels={chrome.labels}
         counts={chrome.counts}

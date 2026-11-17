@@ -2,9 +2,7 @@ import { Suspense } from "react";
 import { ListTodo } from "lucide-react";
 
 import { EmptyState } from "@/components/empty-state";
-import { RailFallback } from "@/components/rail";
 import { ViewBody } from "@/components/view-body";
-import { RailData } from "@/components/view-data";
 import { RowsFallback, ViewShell } from "@/components/view-shell";
 import { ListTitle, TitleFallback } from "@/components/view-title";
 
@@ -33,11 +31,6 @@ export default async function ListPage({
       title={
         <Suspense fallback={<TitleFallback />}>
           <ListTitle id={id} />
-        </Suspense>
-      }
-      rail={
-        <Suspense fallback={<RailFallback current="list" />}>
-          <RailData current="list" currentId={id} />
         </Suspense>
       }
     >
