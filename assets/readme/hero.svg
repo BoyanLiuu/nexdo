@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="1200" height="340" viewBox="0 0 1200 340"
+     role="img" aria-labelledby="hero-title hero-desc">
+  <title id="hero-title">Nexdo</title>
+  <desc id="hero-desc">Nexdo: a todo app that shows what it understood before it saves. Typing "pay rent friday p1 #Home" files a task titled "Pay rent", due Friday 20 November, priority P1, in the Home list.</desc>
+
+  <!-- Surface. The app is light-only, so a light hero is the honest one. -->
+  <rect x="1" y="1" width="1198" height="338" rx="26" fill="#fcfcfb" stroke="#dce0ec" stroke-width="1.5"/>
+
+  <g id="title-block" transform="translate(64 52)">
+    <!-- The brand mark: one full bar for what you are on, three fading bars
+         for what is next. Same geometry as the app's favicon. -->
+    <g id="mark">
+      <rect x="0" y="0" width="10" height="44" rx="4.5" fill="#2a3db0"/>
+      <rect x="15" y="28" width="10" height="16" rx="3.5" fill="#2a3db0" opacity="0.62"/>
+      <rect x="30" y="28" width="10" height="16" rx="3.5" fill="#2a3db0" opacity="0.44"/>
+      <rect x="45" y="28" width="10" height="16" rx="3.5" fill="#2a3db0" opacity="0.28"/>
+    </g>
+
+    <text x="0" y="128" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+          font-size="68" font-weight="700" letter-spacing="-2.2" fill="#1b1f33">Nexdo</text>
+
+    <text x="0" y="180" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+          font-size="25" font-weight="500" fill="#4a5068">Type a task in plain words and see</text>
+    <text x="0" y="214" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+          font-size="25" font-weight="500" fill="#4a5068">what it read — before it saves.</text>
+
+    <g id="meta" transform="translate(0 256)">
+      <rect x="0" y="0" width="11" height="11" rx="3" fill="#2a3db0"/>
+      <text x="24" y="10" font-family="ui-monospace, SFMono-Regular, Menlo, monospace"
+            font-size="18" fill="#656b84">No account needed · Next.js 16 · Postgres</text>
+    </g>
+  </g>
+
+  <!-- The mechanism, in the project's own material: one line in, four fields out. -->
+  <g id="parse-proof" transform="translate(652 44)">
+    <text x="0" y="12" font-family="ui-monospace, SFMono-Regular, Menlo, monospace"
+          font-size="17" font-weight="600" letter-spacing="1.6" fill="#656b84">YOU TYPE</text>
+
+    <g transform="translate(0 26)">
+      <rect x="0" y="0" width="484" height="50" rx="11" fill="#eef0f6" stroke="#dce0ec" stroke-width="1.5"/>
+      <text x="18" y="32" font-family="ui-monospace, SFMono-Regular, Menlo, monospace"
+            font-size="21" fill="#1b1f33">pay rent friday p1 #Home</text>
+    </g>
+
+    <text x="0" y="116" font-family="ui-monospace, SFMono-Regular, Menlo, monospace"
+          font-size="17" font-weight="600" letter-spacing="1.6" fill="#656b84">IT FILES</text>
+    <!-- Rule tying the label to the fields it introduces, mirroring the app's
+         own section dividers rather than drawing a decorative connector. -->
+    <path d="M86 110 H484" stroke="#dce0ec" stroke-width="1.5" fill="none"/>
+
+    <g id="fields" transform="translate(0 134)"
+       font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="19">
+      <g>
+        <text x="0" y="17" fill="#656b84">title</text>
+        <text x="118" y="17" fill="#1b1f33" font-weight="600">Pay rent</text>
+      </g>
+      <g transform="translate(0 31)">
+        <text x="0" y="17" fill="#656b84">due</text>
+        <text x="118" y="17" fill="#1b1f33" font-weight="600">Fri 20 Nov</text>
+      </g>
+      <g transform="translate(0 62)">
+        <text x="0" y="17" fill="#656b84">priority</text>
+        <rect x="118" y="0" width="42" height="25" rx="7" fill="#1b1f33"/>
+        <text x="130" y="18" fill="#ffffff" font-size="16" font-weight="600">P1</text>
+      </g>
+      <g transform="translate(0 93)">
+        <text x="0" y="17" fill="#656b84">list</text>
+        <rect x="118" y="0" width="92" height="25" rx="7" fill="#eef0f6" stroke="#dce0ec" stroke-width="1.5"/>
+        <rect x="129" y="8" width="9" height="9" rx="2.5" fill="#2a3db0"/>
+        <text x="145" y="18" fill="#1b1f33" font-size="16" font-weight="600">Home</text>
+      </g>
+    </g>
+  </g>
+</svg>
